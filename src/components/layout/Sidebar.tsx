@@ -300,12 +300,45 @@ export function Sidebar({
           {!effectiveCollapsed && <span>Bookmarks</span>}
         </button>
 
-        {/* Export with submenu */}
+        {/* ─── Backup: prominent top-level buttons ─── */}
+        <button
+          onClick={() => { exportAll(); }}
+          className={clsx(
+            'flex items-center gap-2 w-full text-sm font-medium rounded-lg px-2 py-1.5',
+            effectiveCollapsed ? 'justify-center btn-ghost' : '',
+          )}
+          style={!effectiveCollapsed ? { background: 'var(--bg-tertiary)', color: 'var(--accent)' } : undefined}
+          title="Export full backup — chats, characters, prompts, and settings"
+        >
+          <Archive size={15} />
+          {!effectiveCollapsed && <span>Export Backup</span>}
+        </button>
+        <button
+          onClick={() => importAllRef.current?.click()}
+          className={clsx(
+            'flex items-center gap-2 w-full text-sm font-medium rounded-lg px-2 py-1.5',
+            effectiveCollapsed ? 'justify-center btn-ghost' : '',
+          )}
+          style={!effectiveCollapsed ? { background: 'var(--bg-tertiary)', color: 'var(--accent)' } : undefined}
+          title="Import full backup (chats + settings + characters)"
+        >
+          <Upload size={15} />
+          {!effectiveCollapsed && <span>Import Backup</span>}
+        </button>
+        <input
+          ref={importAllRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={handleImportAll}
+        />
+
+        {/* Export chats (other formats) submenu */}
         <div className="relative">
           <button
             onClick={() => setShowExportMenu((v) => !v)}
             className={clsx('btn-ghost flex items-center gap-2 w-full text-sm', effectiveCollapsed ? 'justify-center' : '')}
-            title="Export chats"
+            title="Export chats in other formats"
           >
             <Download size={15} />
             {!effectiveCollapsed && (
@@ -321,10 +354,9 @@ export function Sidebar({
               style={{ background: 'var(--bg-secondary)' }}
             >
               {[
-                { label: 'JSON (Chats)', fn: exportChats },
+                { label: 'JSON (Chats Only)', fn: exportChats },
                 { label: 'Markdown', fn: exportChatsMarkdown },
                 { label: 'Plain Text', fn: exportChatsText },
-                { label: '📦 Full Backup (All Data)', fn: exportAll },
               ].map(({ label, fn }) => (
                 <button
                   key={label}
@@ -338,14 +370,14 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Import */}
+        {/* Import chats (JSON only) */}
         <button
           onClick={() => fileInputRef.current?.click()}
           className={clsx('btn-ghost flex items-center gap-2 w-full text-sm', effectiveCollapsed ? 'justify-center' : '')}
           title="Import chats from JSON"
         >
-          <Upload size={15} />
-          {!effectiveCollapsed && <span>Import Chats</span>}
+          <Upload size={13} />
+          {!effectiveCollapsed && <span className="text-muted">Import Chats (JSON)</span>}
         </button>
         <input
           ref={fileInputRef}
@@ -353,23 +385,6 @@ export function Sidebar({
           accept="application/json,.json"
           className="hidden"
           onChange={handleImport}
-        />
-
-        {/* Import Full Backup */}
-        <button
-          onClick={() => importAllRef.current?.click()}
-          className={clsx('btn-ghost flex items-center gap-2 w-full text-sm', effectiveCollapsed ? 'justify-center' : '')}
-          title="Import full backup (chats + settings)"
-        >
-          <Archive size={15} />
-          {!effectiveCollapsed && <span>Import Backup</span>}
-        </button>
-        <input
-          ref={importAllRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          onChange={handleImportAll}
         />
 
         {/* Settings */}
