@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { Chat, Message, Character, Prompt } from '../types'
 import { BUILT_IN_PROMPTS } from '../data/builtInPrompts'
 import { BUILT_IN_CHARACTERS } from '../data/builtInCharacters'
+import { useSettingsStore } from './settingsStore'
 
 function nanoid(): string {
   return Math.random().toString(36).slice(2, 11) + Date.now().toString(36)
@@ -30,7 +31,9 @@ interface ChatState {
   exportChats: () => void
   exportChatsMarkdown: () => void
   exportChatsText: () => void
+  exportAll: () => void
   importChats: (chats: Chat[]) => void
+  importAll: (data: string) => boolean
 
   // Prompt actions
   addPrompt: (p: Omit<Prompt, 'id'>) => void
@@ -276,12 +279,88 @@ export const useChatStore = create<ChatState>()(
         URL.revokeObjectURL(url)
       },
 
+      exportAll: () => {
+        const { chats, prompts, characters } = get()
+        const settings = useSettingsStore.getState()
+        const bundle = {
+          version: 1,
+          exportedAt: new Date().toISOString(),
+          chats,
+          prompts: prompts.filter((p) => !p.isBuiltIn),
+          characters: characters.filter((c) => !c.isBuiltIn),
+          settings: {
+            theme: settings.theme,
+            defaultModelId: settings.defaultModelId,
+            favoriteModelIds: settings.favoriteModelIds,
+            idleAnimation: settings.idleAnimation,
+            customThemeVars: settings.customThemeVars,
+            freeProvider: settings.freeProvider,
+            predictiveText: settings.predictiveText,
+          },
+        }
+        const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+          type: 'application/json',
+        })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `openstarchat-full-backup-${new Date().toISOString().slice(0, 10)}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+      },
+
       importChats: (incoming) => {
         set((s) => {
           const existingIds = new Set(s.chats.map((c) => c.id))
           const newChats = incoming.filter((c) => !existingIds.has(c.id))
           return { chats: [...newChats, ...s.chats] }
         })
+      },
+
+      importAll: (raw) => {
+        try {
+          const bundle = JSON.parse(raw)
+          if (bundle.version !== 1 || !Array.isArray(bundle.chats)) return false
+
+          // Import chats
+          const existingIds = new Set(get().chats.map((c) => c.id))
+          const newChats = (bundle.chats as Chat[]).filter((c) => !existingIds.has(c.id))
+          const existingPromptIds = new Set(get().prompts.map((p) => p.id))
+          const newPrompts = Array.isArray(bundle.prompts)
+            ? (bundle.prompts as Prompt[]).filter((p) => !existingPromptIds.has(p.id))
+            : []
+          const existingCharIds = new Set(get().characters.map((c) => c.id))
+          const newCharacters = Array.isArray(bundle.characters)
+            ? (bundle.characters as Character[]).filter((c) => !existingCharIds.has(c.id))
+            : []
+
+          set((s) => ({
+            chats: [...newChats, ...s.chats],
+            prompts: [...s.prompts, ...newPrompts],
+            characters: [...s.characters, ...newCharacters],
+          }))
+
+          // Import settings
+          if (bundle.settings) {
+            const ss = useSettingsStore.getState()
+            const s = bundle.settings
+            if (s.theme) ss.setTheme(s.theme)
+            if (s.defaultModelId) ss.setDefaultModelId(s.defaultModelId)
+            if (s.idleAnimation) ss.setIdleAnimation(s.idleAnimation)
+            if (s.customThemeVars) ss.setCustomThemeVars(s.customThemeVars)
+            if (s.freeProvider) ss.setFreeProvider(s.freeProvider)
+            if (s.predictiveText !== undefined) ss.setPredictiveText(s.predictiveText)
+            if (Array.isArray(s.favoriteModelIds)) {
+              for (const id of s.favoriteModelIds) {
+                if (!ss.isFavoriteModel(id)) ss.toggleFavoriteModel(id)
+              }
+            }
+          }
+
+          return true
+        } catch {
+          return false
+        }
       },
 
       addPrompt: (p) => {

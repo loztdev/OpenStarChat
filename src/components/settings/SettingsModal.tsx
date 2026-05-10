@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { X, Eye, EyeOff, Check, AlertCircle, Loader, KeyRound, Palette } from 'lucide-react'
+import { X, Eye, EyeOff, Check, AlertCircle, Loader, KeyRound, Palette, Type, Globe } from 'lucide-react'
 import { useSettingsStore } from '../../store/settingsStore'
+import type { FreeProviderConfig } from '../../store/settingsStore'
 import { fetchModels } from '../../api/openrouter'
+import { POLLINATIONS_MODELS } from '../../api/freeProvider'
 import { THEME_SWATCHES } from '../../types'
 import type { ThemeName, IdleAnimation, CustomThemeVars } from '../../types'
 import clsx from 'clsx'
@@ -107,11 +109,15 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const theme = useSettingsStore((s) => s.theme)
   const idleAnimation = useSettingsStore((s) => s.idleAnimation)
   const customThemeVars = useSettingsStore((s) => s.customThemeVars)
+  const freeProvider = useSettingsStore((s) => s.freeProvider)
+  const predictiveText = useSettingsStore((s) => s.predictiveText)
   const setApiKey = useSettingsStore((s) => s.setApiKey)
   const setBuilderApiKey = useSettingsStore((s) => s.setBuilderApiKey)
   const setTheme = useSettingsStore((s) => s.setTheme)
   const setIdleAnimation = useSettingsStore((s) => s.setIdleAnimation)
   const setCustomThemeVars = useSettingsStore((s) => s.setCustomThemeVars)
+  const setFreeProvider = useSettingsStore((s) => s.setFreeProvider)
+  const setPredictiveText = useSettingsStore((s) => s.setPredictiveText)
 
   return (
     <div
@@ -143,6 +149,43 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
             onSave={setBuilderApiKey}
             helper={<>If set, AI Character Builder uses this key. Leave blank to fall back to your main key.</>}
           />
+
+          {/* Free Provider */}
+          <FreeProviderSection config={freeProvider} onChange={setFreeProvider} hasApiKey={!!apiKey} />
+
+          {/* Predictive Text */}
+          <section>
+            <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+              <Type size={13} />
+              Predictive Text
+            </h3>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div
+                onClick={() => setPredictiveText(!predictiveText)}
+                className={clsx(
+                  'w-10 h-5 rounded-full relative transition-colors cursor-pointer',
+                  predictiveText ? '' : ''
+                )}
+                style={{
+                  background: predictiveText ? 'var(--accent)' : 'var(--bg-tertiary)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div
+                  className="absolute top-0.5 w-3.5 h-3.5 rounded-full transition-transform"
+                  style={{
+                    background: predictiveText ? 'white' : 'var(--text-secondary)',
+                    transform: predictiveText ? 'translateX(22px)' : 'translateX(3px)',
+                  }}
+                />
+              </div>
+              <span className="text-sm">{predictiveText ? 'On' : 'Off'}</span>
+            </label>
+            <p className="text-xs text-muted mt-2">
+              Shows AI-powered text suggestions as you type. Press <strong>Tab</strong> to accept.
+              {!apiKey && !freeProvider.enabled && ' Requires an API key or free provider to be configured.'}
+            </p>
+          </section>
 
           {/* Theme */}
           <section>
@@ -261,5 +304,156 @@ function ThemeSwatchBtn({
         </span>
       )}
     </button>
+  )
+}
+
+function FreeProviderSection({
+  config,
+  onChange,
+  hasApiKey,
+}: {
+  config: FreeProviderConfig
+  onChange: (updates: Partial<FreeProviderConfig>) => void
+  hasApiKey: boolean
+}) {
+  return (
+    <section>
+      <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+        <Globe size={13} />
+        Free LLM Provider
+      </h3>
+
+      <label className="flex items-center gap-3 cursor-pointer mb-3">
+        <div
+          onClick={() => onChange({ enabled: !config.enabled })}
+          className="w-10 h-5 rounded-full relative transition-colors cursor-pointer"
+          style={{
+            background: config.enabled ? 'var(--accent)' : 'var(--bg-tertiary)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          <div
+            className="absolute top-0.5 w-3.5 h-3.5 rounded-full transition-transform"
+            style={{
+              background: config.enabled ? 'white' : 'var(--text-secondary)',
+              transform: config.enabled ? 'translateX(22px)' : 'translateX(3px)',
+            }}
+          />
+        </div>
+        <span className="text-sm">{config.enabled ? 'Enabled' : 'Disabled'}</span>
+      </label>
+
+      {hasApiKey && config.enabled && (
+        <p className="text-xs mb-3 px-2 py-1.5 rounded-lg" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>
+          You have an OpenRouter key set. The free provider will only be used when the OpenRouter key is removed.
+        </p>
+      )}
+
+      {config.enabled && (
+        <div className="flex flex-col gap-3">
+          {/* Provider type selector */}
+          <div className="flex gap-2">
+            {(['pollinations', 'custom'] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => onChange({ type })}
+                className={clsx(
+                  'text-xs px-3 py-1.5 rounded-lg border transition-all flex-1',
+                  config.type === type ? 'border-accent accent-text' : 'border-subtle btn-ghost'
+                )}
+                style={config.type === type ? { borderColor: 'var(--accent)' } : undefined}
+              >
+                {type === 'pollinations' ? '🌸 Pollinations.ai' : '🔧 Custom Endpoint'}
+              </button>
+            ))}
+          </div>
+
+          {config.type === 'pollinations' && (
+            <>
+              <div>
+                <label className="text-xs text-muted mb-1 block">API Key (optional for basic use)</label>
+                <input
+                  type="password"
+                  value={config.pollinationsKey}
+                  onChange={(e) => onChange({ pollinationsKey: e.target.value })}
+                  placeholder="pk_… or sk_… (from enter.pollinations.ai)"
+                  className="w-full px-3 py-2 rounded-lg border border-subtle text-sm bg-transparent outline-none font-mono"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted mb-1 block">Model</label>
+                <select
+                  value={config.pollinationsModel}
+                  onChange={(e) => onChange({ pollinationsModel: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-subtle text-sm outline-none cursor-pointer"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                >
+                  {POLLINATIONS_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-muted">
+                Pollinations.ai offers free AI models. Get a key at{' '}
+                <a href="https://enter.pollinations.ai" target="_blank" rel="noreferrer" className="accent-text underline">
+                  enter.pollinations.ai
+                </a>{' '}
+                for higher rate limits, or try without one first.
+              </p>
+            </>
+          )}
+
+          {config.type === 'custom' && (
+            <>
+              <div>
+                <label className="text-xs text-muted mb-1 block">Base URL (OpenAI-compatible)</label>
+                <input
+                  type="text"
+                  value={config.customUrl}
+                  onChange={(e) => onChange({ customUrl: e.target.value })}
+                  placeholder="https://api.example.com"
+                  className="w-full px-3 py-2 rounded-lg border border-subtle text-sm bg-transparent outline-none font-mono"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted mb-1 block">API Key (optional)</label>
+                <input
+                  type="password"
+                  value={config.customKey}
+                  onChange={(e) => onChange({ customKey: e.target.value })}
+                  placeholder="sk-…"
+                  className="w-full px-3 py-2 rounded-lg border border-subtle text-sm bg-transparent outline-none font-mono"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted mb-1 block">Model ID</label>
+                <input
+                  type="text"
+                  value={config.customModel}
+                  onChange={(e) => onChange({ customModel: e.target.value })}
+                  placeholder="gpt-3.5-turbo"
+                  className="w-full px-3 py-2 rounded-lg border border-subtle text-sm bg-transparent outline-none font-mono"
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <p className="text-xs text-muted">
+                Point to any OpenAI-compatible endpoint (e.g. Ollama, LM Studio, vLLM, or any free proxy).
+                The URL should support <code className="font-mono">/v1/chat/completions</code>.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {!config.enabled && (
+        <p className="text-xs text-muted">
+          Enable this to use free LLM providers without an OpenRouter API key.
+          Supports Pollinations.ai and any OpenAI-compatible endpoint.
+        </p>
+      )}
+    </section>
   )
 }

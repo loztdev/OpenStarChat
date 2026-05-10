@@ -5,6 +5,28 @@ import { DEFAULT_CUSTOM_THEME } from '../types'
 
 const RECENT_CAP = 8
 
+export type FreeProviderType = 'pollinations' | 'custom'
+
+export interface FreeProviderConfig {
+  enabled: boolean
+  type: FreeProviderType
+  customUrl: string
+  customKey: string
+  customModel: string
+  pollinationsKey: string
+  pollinationsModel: string
+}
+
+export const DEFAULT_FREE_PROVIDER: FreeProviderConfig = {
+  enabled: false,
+  type: 'pollinations',
+  customUrl: '',
+  customKey: '',
+  customModel: '',
+  pollinationsKey: '',
+  pollinationsModel: 'openai',
+}
+
 function applyCustomTheme(vars: CustomThemeVars) {
   const el = document.documentElement
   el.style.setProperty('--bg-primary', vars.bgPrimary)
@@ -40,6 +62,8 @@ interface SettingsState {
   recentModelIds: string[]
   idleAnimation: IdleAnimation
   customThemeVars: CustomThemeVars
+  freeProvider: FreeProviderConfig
+  predictiveText: boolean
   setApiKey: (key: string) => void
   setBuilderApiKey: (key: string) => void
   setTheme: (theme: ThemeName) => void
@@ -49,6 +73,8 @@ interface SettingsState {
   pushRecentModel: (id: string) => void
   setIdleAnimation: (a: IdleAnimation) => void
   setCustomThemeVars: (vars: Partial<CustomThemeVars>) => void
+  setFreeProvider: (updates: Partial<FreeProviderConfig>) => void
+  setPredictiveText: (v: boolean) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -62,6 +88,8 @@ export const useSettingsStore = create<SettingsState>()(
       recentModelIds: [],
       idleAnimation: 'random',
       customThemeVars: DEFAULT_CUSTOM_THEME,
+      freeProvider: DEFAULT_FREE_PROVIDER,
+      predictiveText: false,
 
       setApiKey: (key) => set({ apiKey: key }),
       setBuilderApiKey: (key) => set({ builderApiKey: key }),
@@ -101,6 +129,11 @@ export const useSettingsStore = create<SettingsState>()(
           return { customThemeVars: next }
         })
       },
+
+      setFreeProvider: (updates) =>
+        set((s) => ({ freeProvider: { ...s.freeProvider, ...updates } })),
+
+      setPredictiveText: (v) => set({ predictiveText: v }),
     }),
     {
       name: 'openstarchat-settings',

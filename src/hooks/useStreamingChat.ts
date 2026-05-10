@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { streamChat } from '../api/openrouter'
+import { streamFree, getPollinationsProvider, getCustomProvider } from '../api/freeProvider'
 import { useChatStore } from '../store/chatStore'
 import { useSettingsStore } from '../store/settingsStore'
 import type { Message } from '../types'
@@ -13,7 +14,10 @@ export function useStreamingChat() {
   const truncateMessagesAfter = useChatStore((s) => s.truncateMessagesAfter)
   const chats = useChatStore((s) => s.chats)
   const apiKey = useSettingsStore((s) => s.apiKey)
+  const freeProvider = useSettingsStore((s) => s.freeProvider)
   const pushRecentModel = useSettingsStore((s) => s.pushRecentModel)
+
+  const useFree = freeProvider.enabled && !apiKey
 
   function cancelStream() {
     cancelRef.current?.()
@@ -37,27 +41,46 @@ export function useStreamingChat() {
 
     let accumulated = ''
 
-    const cancel = streamChat({
-      apiKey,
-      modelId,
-      messages: historyMessages,
-      systemPrompt,
-      onDelta: (delta) => {
+    const callbacks = {
+      onDelta: (delta: string) => {
         accumulated += delta
         updateMessage(chatId, assistantMsg.id, accumulated)
       },
-      onDone: (tokenCount) => {
+      onDone: (tokenCount?: number) => {
         finalizeMessage(chatId, assistantMsg.id, tokenCount)
         setIsStreaming(false)
         cancelRef.current = null
       },
-      onError: (err) => {
+      onError: (err: Error) => {
         updateMessage(chatId, assistantMsg.id, `⚠️ Error: ${err.message}`)
         finalizeMessage(chatId, assistantMsg.id)
         setIsStreaming(false)
         cancelRef.current = null
       },
-    })
+    }
+
+    let cancel: () => void
+
+    if (useFree) {
+      const provider = freeProvider.type === 'pollinations'
+        ? getPollinationsProvider(freeProvider.pollinationsKey, freeProvider.pollinationsModel)
+        : getCustomProvider(freeProvider.customUrl, freeProvider.customKey, freeProvider.customModel)
+
+      cancel = streamFree({
+        provider,
+        messages: historyMessages,
+        systemPrompt,
+        ...callbacks,
+      })
+    } else {
+      cancel = streamChat({
+        apiKey,
+        modelId,
+        messages: historyMessages,
+        systemPrompt,
+        ...callbacks,
+      })
+    }
 
     cancelRef.current = cancel
   }
@@ -136,5 +159,5 @@ export function useStreamingChat() {
     _stream(chatId, historyMessages, chat.modelId, chat.systemPrompt || undefined)
   }
 
-  return { sendMessage, regenerate, editAndResend, isStreaming, cancelStream }
+  return { sendMessage, regenerate, editAndResend, isStreaming, cancelStream, useFreeProvider: useFree }
 }

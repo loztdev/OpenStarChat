@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   MessageSquare, Plus, Trash2, Settings, ChevronLeft, ChevronRight,
-  Download, Upload, Pin, PinOff, Search, Bookmark, ChevronDown, Users, X,
+  Download, Upload, Pin, PinOff, Search, Bookmark, ChevronDown, Users, X, Archive,
 } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -33,7 +33,9 @@ export function Sidebar({
   const exportChats = useChatStore((s) => s.exportChats)
   const exportChatsMarkdown = useChatStore((s) => s.exportChatsMarkdown)
   const exportChatsText = useChatStore((s) => s.exportChatsText)
+  const exportAll = useChatStore((s) => s.exportAll)
   const importChats = useChatStore((s) => s.importChats)
+  const importAll = useChatStore((s) => s.importAll)
   const togglePinChat = useChatStore((s) => s.togglePinChat)
   const defaultModelId = useSettingsStore((s) => s.defaultModelId)
 
@@ -41,7 +43,9 @@ export function Sidebar({
   const [searchQuery, setSearchQuery] = useState('')
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [importToast, setImportToast] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const importAllRef = useRef<HTMLInputElement>(null)
 
   // Collapsed icon-only mode only applies on desktop. On mobile, the overlay
   // always shows full labels regardless of the `collapsed` setting.
@@ -90,6 +94,19 @@ export function Sidebar({
       } catch {
         // invalid JSON — ignore
       }
+    }
+    reader.readAsText(file)
+    e.target.value = ''
+  }
+
+  function handleImportAll(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const ok = importAll(reader.result as string)
+      setImportToast(ok ? 'Full backup imported!' : 'Invalid backup file.')
+      setTimeout(() => setImportToast(null), 3000)
     }
     reader.readAsText(file)
     e.target.value = ''
@@ -304,9 +321,10 @@ export function Sidebar({
               style={{ background: 'var(--bg-secondary)' }}
             >
               {[
-                { label: 'JSON', fn: exportChats },
+                { label: 'JSON (Chats)', fn: exportChats },
                 { label: 'Markdown', fn: exportChatsMarkdown },
                 { label: 'Plain Text', fn: exportChatsText },
+                { label: '📦 Full Backup (All Data)', fn: exportAll },
               ].map(({ label, fn }) => (
                 <button
                   key={label}
@@ -337,6 +355,23 @@ export function Sidebar({
           onChange={handleImport}
         />
 
+        {/* Import Full Backup */}
+        <button
+          onClick={() => importAllRef.current?.click()}
+          className={clsx('btn-ghost flex items-center gap-2 w-full text-sm', effectiveCollapsed ? 'justify-center' : '')}
+          title="Import full backup (chats + settings)"
+        >
+          <Archive size={15} />
+          {!effectiveCollapsed && <span>Import Backup</span>}
+        </button>
+        <input
+          ref={importAllRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={handleImportAll}
+        />
+
         {/* Settings */}
         <button
           onClick={onOpenSettings}
@@ -346,6 +381,16 @@ export function Sidebar({
           <Settings size={15} />
           {!effectiveCollapsed && <span>Settings</span>}
         </button>
+
+        {/* Import toast */}
+        {importToast && !effectiveCollapsed && (
+          <div
+            className="text-xs text-center py-1.5 rounded-lg mt-1 fade-in"
+            style={{ background: 'var(--accent)', color: 'white' }}
+          >
+            {importToast}
+          </div>
+        )}
       </div>
     </aside>
   )

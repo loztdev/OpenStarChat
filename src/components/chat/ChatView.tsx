@@ -33,7 +33,7 @@ export function ChatView({
   const defaultModelId = useSettingsStore((s) => s.defaultModelId)
   const apiKey = useSettingsStore((s) => s.apiKey)
 
-  const { sendMessage, regenerate, editAndResend, isStreaming, cancelStream } = useStreamingChat()
+  const { sendMessage, regenerate, editAndResend, isStreaming, cancelStream, useFreeProvider } = useStreamingChat()
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -58,7 +58,7 @@ export function ChatView({
   }, [activeChat?.messages.length, activeChat?.messages[activeChat.messages.length - 1]?.content, isAtBottom])
 
   function handleSend(content: string, imageUrl?: string) {
-    if (!apiKey) {
+    if (!apiKey && !useFreeProvider) {
       onNeedApiKey()
       return
     }
@@ -110,7 +110,7 @@ export function ChatView({
             title="New Chat"
             description="Start a fresh conversation"
             onClick={() => {
-              if (!apiKey) { onNeedApiKey(); return }
+              if (!apiKey && !useFreeProvider) { onNeedApiKey(); return }
               createChat(defaultModelId)
             }}
           />

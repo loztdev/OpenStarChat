@@ -30,6 +30,7 @@ export default function App() {
   const idleAnimation = useSettingsStore((s) => s.idleAnimation)
   const defaultModelId = useSettingsStore((s) => s.defaultModelId)
   const apiKey = useSettingsStore((s) => s.apiKey)
+  const freeProviderEnabled = useSettingsStore((s) => s.freeProvider.enabled)
 
   const handleIdle = useCallback(() => setIsIdle(true), [])
   const handleActive = useCallback(() => setIsIdle(false), [])
@@ -60,7 +61,7 @@ export default function App() {
         } else if (e.key === 'n' || e.key === 'N') {
           e.preventDefault()
           setView('chat')
-          if (apiKey) createChat(defaultModelId)
+          if (apiKey || freeProviderEnabled) createChat(defaultModelId)
           else setShowSettings(true)
         } else if (e.key === '/') {
           e.preventDefault()
@@ -80,7 +81,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  }, [apiKey, createChat, defaultModelId])
+  }, [apiKey, freeProviderEnabled, createChat, defaultModelId])
 
   function handleNavigateToChat(chatId: string) {
     setActiveChatId(chatId)
