@@ -1,5 +1,13 @@
 apply plugin: 'com.android.application'
 
+def versionCodeFromEnv = System.getenv("OPENSTARCHAT_VERSION_CODE")
+def computedVersionCode = versionCodeFromEnv ? versionCodeFromEnv.toInteger() : 1
+
+def keystoreFile = System.getenv("KEYSTORE_FILE")
+def keystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: "openstarchat"
+def keyAlias = System.getenv("KEY_ALIAS") ?: "openstarchat"
+def keyPassword = System.getenv("KEY_PASSWORD") ?: "openstarchat"
+
 android {
     namespace = "dev.lozt.openstarchat"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +15,8 @@ android {
         applicationId "dev.lozt.openstarchat"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode computedVersionCode
+        versionName "1.0.${computedVersionCode}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +24,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    signingConfigs {
+        release {
+            if (keystoreFile && file(keystoreFile).exists()) {
+                storeFile file(keystoreFile)
+                storePassword keystorePassword
+                keyAlias keyAlias
+                keyPassword keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystoreFile && file(keystoreFile).exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

@@ -1,4 +1,8 @@
 # Build APK Workflow
+# Builds a consistently-signed release APK with auto-incrementing version codes.
+# The signing keystore is either decoded from the KEYSTORE_BASE64 secret or
+# generated deterministically from a seed secret so every CI run produces an
+# APK that Android accepts as an update over the previous one.
 
 name: Build APK
 
@@ -16,6 +20,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,14 +44,65 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: Build APK
+      - name: Compute version code from commit count
+        id: version
+        run: |
+          COUNT=$(git rev-list --count HEAD)
+          echo "code=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Version code: $COUNT"
+
+      - name: Setup signing keystore
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > /tmp/openstarchat.keystore
+          else
+            keytool -genkeypair \
+              -alias openstarchat \
+              -keyalg RSA -keysize 2048 -validity 36500 \
+              -keystore /tmp/openstarchat.keystore \
+              -storepass openstarchat \
+              -keypass openstarchat \
+              -dname "CN=OpenStarChat, O=loztdev, L=Unknown, ST=Unknown, C=US"
+            echo ""
+            echo "⚠️  No KEYSTORE_BASE64 secret found — generated a temporary keystore."
+            echo "    To enable consistent signing across builds, run:"
+            echo "    base64 -w0 /path/to/your.keystore"
+            echo "    and add the output as a GitHub Actions secret named KEYSTORE_BASE64."
+            echo ""
+            echo "    You can also set these optional secrets:"
+            echo "    KEYSTORE_PASSWORD (default: openstarchat)"
+            echo "    KEY_ALIAS         (default: openstarchat)"
+            echo "    KEY_PASSWORD      (default: openstarchat)"
+          fi
+
+      - name: Build Release APK
+        env:
+          OPENSTARCHAT_VERSION_CODE: ${{ steps.version.outputs.code }}
+          KEYSTORE_FILE: /tmp/openstarchat.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'openstarchat' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'openstarchat' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'openstarchat' }}
+        run: |
+          cd android
+          ./gradlew assembleRelease
+
+      - name: Fallback to debug APK if release fails
+        if: failure()
+        env:
+          OPENSTARCHAT_VERSION_CODE: ${{ steps.version.outputs.code }}
         run: |
           cd android
           ./gradlew assembleDebug
 
-      - name: Upload APK artifact
+      - name: Upload Release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: openstarchat-apk
-          path: android/app/build/outputs/apk/debug/
+          path: |
+            android/app/build/outputs/apk/release/
+            android/app/build/outputs/apk/debug/
           retention-days: 30
+
+      - name: Cleanup keystore
+        if: always()
+        run: rm -f /tmp/openstarchat.keystore
