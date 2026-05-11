@@ -1,10 +1,35 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Send, Square, ChevronDown, Paperclip, X } from 'lucide-react'
+import { Send, Square, ChevronDown, Paperclip, X, Mic, MicOff, Thermometer, SlidersHorizontal } from 'lucide-react'
 import clsx from 'clsx'
 import type { Chat, Character } from '../../types'
 import { useSettingsStore } from '../../store/settingsStore'
+import { useChatStore } from '../../store/chatStore'
 import { completeFree, getPollinationsProvider, getCustomProvider } from '../../api/freeProvider'
 import { completeChat } from '../../api/openrouter'
+
+interface SpeechResult { readonly [index: number]: { transcript: string } }
+interface SpeechEvent { results: ArrayLike<SpeechResult> }
+type SpeechRecognitionInstance = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onresult: ((e: SpeechEvent) => void) | null
+  onend: (() => void) | null
+  onerror: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+function createSpeechRecognition(): SpeechRecognitionInstance | null {
+  const W = window as unknown as Record<string, unknown>
+  const Ctor = W.SpeechRecognition ?? W.webkitSpeechRecognition
+  if (!Ctor) return null
+  return new (Ctor as new () => SpeechRecognitionInstance)()
+}
+
+const HAS_SPEECH = typeof window !== 'undefined' &&
+  !!(window as unknown as Record<string, unknown>).SpeechRecognition ||
+  !!(window as unknown as Record<string, unknown>).webkitSpeechRecognition
 
 const DRAFT_KEY = 'openstarchat-drafts'
 
@@ -48,6 +73,10 @@ export function ChatInput({
   const [attachedImage, setAttachedImage] = useState<string | null>(null)
   const [attachedName, setAttachedName] = useState<string>('')
   const [ghostText, setGhostText] = useState('')
+  const [isListening, setIsListening] = useState(false)
+  const [showParams, setShowParams] = useState(false)
+  const recognitionRef = useRef<ReturnType<typeof createSpeechRecognition> | null>(null)
+  const updateChat = useChatStore((s) => s.updateChat)
   const predictiveText = useSettingsStore((s) => s.predictiveText)
   const apiKey = useSettingsStore((s) => s.apiKey)
   const freeProvider = useSettingsStore((s) => s.freeProvider)
@@ -181,6 +210,35 @@ export function ChatInput({
     onSend(val ?? '', img)
   }
 
+  function toggleVoice() {
+    if (isListening) {
+      recognitionRef.current?.stop()
+      setIsListening(false)
+      return
+    }
+    const recognition = createSpeechRecognition()
+    if (!recognition) return
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = navigator.language || 'en-US'
+    recognition.onresult = (event: SpeechEvent) => {
+      const transcript = Array.from(event.results)
+        .map((r) => r[0].transcript)
+        .join('')
+      const ta = textareaRef.current
+      if (ta) {
+        ta.value = transcript
+        saveDraft(chat.id, transcript)
+        autosize()
+      }
+    }
+    recognition.onend = () => setIsListening(false)
+    recognition.onerror = () => setIsListening(false)
+    recognition.start()
+    recognitionRef.current = recognition
+    setIsListening(true)
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -253,7 +311,57 @@ export function ChatInput({
             📋 System prompt set
           </span>
         )}
+
+        {/* Params toggle */}
+        <button
+          onClick={() => setShowParams((v) => !v)}
+          className={clsx(
+            'flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-subtle btn-ghost',
+            showParams && 'accent-text'
+          )}
+          style={showParams ? { borderColor: 'var(--accent)' } : undefined}
+          title="Temperature & max tokens"
+        >
+          <SlidersHorizontal size={11} />
+        </button>
       </div>
+
+      {/* Temperature / Max Tokens panel */}
+      {showParams && (
+        <div
+          className="flex items-center gap-4 mb-2 px-2 py-2 rounded-lg text-xs"
+          style={{ background: 'var(--bg-tertiary)' }}
+        >
+          <div className="flex items-center gap-2 flex-1">
+            <Thermometer size={12} className="text-muted shrink-0" />
+            <span className="text-muted shrink-0">Temp</span>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={chat.temperature ?? 1}
+              onChange={(e) => updateChat(chat.id, { temperature: parseFloat(e.target.value) })}
+              className="flex-1 accent-accent"
+            />
+            <span className="w-6 text-right font-mono">{(chat.temperature ?? 1).toFixed(1)}</span>
+          </div>
+          <div className="flex items-center gap-2 flex-1">
+            <span className="text-muted shrink-0">Max</span>
+            <input
+              type="number"
+              min={1}
+              max={128000}
+              step={256}
+              value={chat.maxTokens ?? 4096}
+              onChange={(e) => updateChat(chat.id, { maxTokens: parseInt(e.target.value) || 4096 })}
+              className="w-20 px-2 py-1 rounded border border-subtle bg-transparent outline-none text-xs font-mono"
+              style={{ color: 'var(--text-primary)', background: 'var(--bg-secondary)' }}
+            />
+            <span className="text-muted">tokens</span>
+          </div>
+        </div>
+      )}
 
       {/* Image preview */}
       {attachedImage && (
@@ -314,6 +422,17 @@ export function ChatInput({
             </div>
           )}
         </div>
+
+        {HAS_SPEECH && !isStreaming && (
+          <button
+            onClick={toggleVoice}
+            className={clsx('shrink-0 p-1.5 rounded-lg btn-ghost', isListening && 'animate-pulse')}
+            style={isListening ? { color: 'var(--danger)' } : undefined}
+            title={isListening ? 'Stop listening' : 'Voice input'}
+          >
+            {isListening ? <MicOff size={14} /> : <Mic size={14} />}
+          </button>
+        )}
 
         {isStreaming ? (
           <button
