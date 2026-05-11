@@ -3,10 +3,10 @@ apply plugin: 'com.android.application'
 def versionCodeFromEnv = System.getenv("OPENSTARCHAT_VERSION_CODE")
 def computedVersionCode = versionCodeFromEnv ? versionCodeFromEnv.toInteger() : 1
 
-def keystoreFile = System.getenv("KEYSTORE_FILE")
-def keystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: "openstarchat"
-def keyAlias = System.getenv("KEY_ALIAS") ?: "openstarchat"
-def keyPassword = System.getenv("KEY_PASSWORD") ?: "openstarchat"
+def keystoreFilePath = System.getenv("KEYSTORE_FILE")
+def ksPassword = System.getenv("KEYSTORE_PASSWORD") ?: "openstarchat"
+def ksAlias = System.getenv("KEY_ALIAS") ?: "openstarchat"
+def ksKeyPassword = System.getenv("KEY_PASSWORD") ?: "openstarchat"
 
 android {
     namespace = "dev.lozt.openstarchat"
@@ -27,11 +27,11 @@ android {
 
     signingConfigs {
         release {
-            if (keystoreFile && file(keystoreFile).exists()) {
-                storeFile file(keystoreFile)
-                storePassword keystorePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
+            if (keystoreFilePath && file(keystoreFilePath).exists()) {
+                storeFile = file(keystoreFilePath)
+                storePassword = ksPassword
+                keyAlias = ksAlias
+                keyPassword = ksKeyPassword
             }
         }
     }
@@ -40,7 +40,7 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            if (keystoreFile && file(keystoreFile).exists()) {
+            if (keystoreFilePath && file(keystoreFilePath).exists()) {
                 signingConfig signingConfigs.release
             }
         }
