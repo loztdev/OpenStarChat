@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { AppLayout } from './components/layout/AppLayout'
 import { ChatView } from './components/chat/ChatView'
 import { ModelPicker } from './components/models/ModelPicker'
@@ -7,6 +7,8 @@ import { CharacterSelector } from './components/characters/CharacterSelector'
 import { CharactersPage } from './components/characters/CharactersPage'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel'
+import { CompareView } from './components/chat/CompareView'
+import type { CompareViewHandle } from './components/chat/CompareView'
 import { Starfield } from './components/Starfield'
 import { useIdleTimer } from './hooks/useIdleTimer'
 import { useChatStore } from './store/chatStore'
@@ -20,6 +22,9 @@ export default function App() {
   const [showPrompts, setShowPrompts] = useState(false)
   const [showCharacters, setShowCharacters] = useState(false)
   const [showBookmarks, setShowBookmarks] = useState(false)
+  const [showCompare, setShowCompare] = useState(false)
+  const [comparePickerSlot, setComparePickerSlot] = useState<number | null>(null)
+  const compareRef = useRef<CompareViewHandle>(null)
   const [isIdle, setIsIdle] = useState(false)
   const [view, setView] = useState<MainView>('chat')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -134,6 +139,29 @@ export default function App() {
         <BookmarksPanel
           onClose={() => setShowBookmarks(false)}
           onNavigateToChat={handleNavigateToChat}
+        />
+      )}
+
+      {/* Compare View */}
+      {showCompare && (
+        <CompareView
+          ref={compareRef}
+          onClose={() => setShowCompare(false)}
+          onOpenModelPicker={(slot) => {
+            setComparePickerSlot(slot)
+            setShowModelPicker(true)
+          }}
+        />
+      )}
+      {comparePickerSlot !== null && showModelPicker && (
+        <ModelPicker
+          onClose={() => { setShowModelPicker(false); setComparePickerSlot(null) }}
+          title="Select Model for Comparison"
+          onSelectModel={(modelId) => {
+            compareRef.current?.setModelAtSlot(comparePickerSlot, modelId)
+            setShowModelPicker(false)
+            setComparePickerSlot(null)
+          }}
         />
       )}
 

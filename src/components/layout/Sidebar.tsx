@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import {
   MessageSquare, Plus, Trash2, Settings, ChevronLeft, ChevronRight,
   Download, Upload, Pin, PinOff, Search, Bookmark, ChevronDown, Users, X, Archive,
+  Pencil, FolderPlus, Folder,
 } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -37,6 +38,10 @@ export function Sidebar({
   const importChats = useChatStore((s) => s.importChats)
   const importAll = useChatStore((s) => s.importAll)
   const togglePinChat = useChatStore((s) => s.togglePinChat)
+  const renameChat = useChatStore((s) => s.renameChat)
+  const folders = useChatStore((s) => s.folders)
+  const addFolder = useChatStore((s) => s.addFolder)
+  const setChatTags = useChatStore((s) => s.setChatTags)
   const defaultModelId = useSettingsStore((s) => s.defaultModelId)
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -44,8 +49,12 @@ export function Sidebar({
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const [importToast, setImportToast] = useState<string | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [activeFolder, setActiveFolder] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const importAllRef = useRef<HTMLInputElement>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
 
   // Collapsed icon-only mode only applies on desktop. On mobile, the overlay
   // always shows full labels regardless of the `collapsed` setting.
@@ -123,51 +132,111 @@ export function Sidebar({
   const unpinned = filtered.filter((c) => !c.pinned).sort((a, b) => b.updatedAt - a.updatedAt)
   const sorted = [...pinned, ...unpinned]
 
+  function startRename(chatId: string, currentTitle: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    setRenamingId(chatId)
+    setRenameValue(currentTitle)
+    setTimeout(() => renameInputRef.current?.focus(), 50)
+  }
+
+  function commitRename() {
+    if (renamingId && renameValue.trim()) {
+      renameChat(renamingId, renameValue.trim())
+    }
+    setRenamingId(null)
+    setRenameValue('')
+  }
+
+  function removeTagFromChat(chatId: string, tag: string) {
+    const chat = chats.find((c) => c.id === chatId)
+    if (!chat) return
+    setChatTags(chatId, (chat.tags ?? []).filter((t) => t !== tag))
+  }
+
   function ChatRow({ chat }: { chat: Chat }) {
     const isActive = activeChatId === chat.id
+    const isRenaming = renamingId === chat.id
     return (
-      <button
-        key={chat.id}
-        onClick={() => { setActiveChatId(chat.id); onChangeView('chat') }}
-        className={clsx(
-          'w-full flex items-center gap-2 px-2 py-2 mx-0 rounded-md text-left text-sm group transition-colors relative',
-          isActive ? 'bg-accent text-white' : 'hover:bg-tertiary'
-        )}
-        style={isActive ? { background: 'var(--accent)', color: 'white' } : undefined}
-        title={effectiveCollapsed ? chat.title : undefined}
-      >
-        {chat.pinned ? (
-          <Pin size={13} className="shrink-0" style={{ color: isActive ? 'white' : 'var(--accent)' }} />
-        ) : (
-          <MessageSquare size={14} className="shrink-0" style={{ color: isActive ? 'white' : 'var(--text-secondary)' }} />
-        )}
-        {!effectiveCollapsed && (
-          <>
-            <span className="truncate flex-1 min-w-0">{chat.title}</span>
-            <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={(e) => handlePinChat(chat.id, e)}
-                className="p-0.5 rounded"
-                style={{ color: chat.pinned ? 'var(--accent)' : undefined }}
-                title={chat.pinned ? 'Unpin' : 'Pin'}
+      <div className="relative">
+        <button
+          key={chat.id}
+          onClick={() => { setActiveChatId(chat.id); onChangeView('chat') }}
+          className={clsx(
+            'w-full flex items-center gap-2 px-2 py-2 mx-0 rounded-md text-left text-sm group transition-colors relative',
+            isActive ? 'bg-accent text-white' : 'hover:bg-tertiary'
+          )}
+          style={isActive ? { background: 'var(--accent)', color: 'white' } : undefined}
+          title={effectiveCollapsed ? chat.title : undefined}
+        >
+          {chat.pinned ? (
+            <Pin size={13} className="shrink-0" style={{ color: isActive ? 'white' : 'var(--accent)' }} />
+          ) : (
+            <MessageSquare size={14} className="shrink-0" style={{ color: isActive ? 'white' : 'var(--text-secondary)' }} />
+          )}
+          {!effectiveCollapsed && (
+            <>
+              {isRenaming ? (
+                <input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={commitRename}
+                  onKeyDown={(e) => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setRenamingId(null) }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex-1 min-w-0 bg-transparent outline-none text-sm border-b"
+                  style={{ borderColor: 'var(--accent)', color: isActive ? 'white' : 'var(--text-primary)' }}
+                />
+              ) : (
+                <span className="truncate flex-1 min-w-0">{chat.title}</span>
+              )}
+              <div className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={(e) => startRename(chat.id, chat.title, e)}
+                  className="p-0.5 rounded"
+                  title="Rename"
+                >
+                  <Pencil size={10} />
+                </button>
+                <button
+                  onClick={(e) => handlePinChat(chat.id, e)}
+                  className="p-0.5 rounded"
+                  style={{ color: chat.pinned ? 'var(--accent)' : undefined }}
+                  title={chat.pinned ? 'Unpin' : 'Pin'}
+                >
+                  {chat.pinned ? <PinOff size={11} /> : <Pin size={11} />}
+                </button>
+                <button
+                  onClick={(e) => handleDeleteChat(chat.id, e)}
+                  className={clsx(
+                    'p-0.5 rounded',
+                    deleteConfirmId === chat.id ? 'opacity-100' : ''
+                  )}
+                  style={{ color: deleteConfirmId === chat.id ? 'var(--danger)' : undefined }}
+                  title={deleteConfirmId === chat.id ? 'Click again to confirm' : 'Delete chat'}
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            </>
+          )}
+        </button>
+        {/* Tags row */}
+        {!effectiveCollapsed && (chat.tags?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap gap-1 px-7 pb-1">
+            {chat.tags!.map((tag) => (
+              <span
+                key={tag}
+                className="text-[10px] px-1.5 py-0 rounded-full cursor-pointer"
+                style={{ background: 'var(--accent)', color: 'white', opacity: 0.7 }}
+                onClick={() => removeTagFromChat(chat.id, tag)}
+                title={`Remove tag: ${tag}`}
               >
-                {chat.pinned ? <PinOff size={11} /> : <Pin size={11} />}
-              </button>
-              <button
-                onClick={(e) => handleDeleteChat(chat.id, e)}
-                className={clsx(
-                  'p-0.5 rounded',
-                  deleteConfirmId === chat.id ? 'opacity-100' : ''
-                )}
-                style={{ color: deleteConfirmId === chat.id ? 'var(--danger)' : undefined }}
-                title={deleteConfirmId === chat.id ? 'Click again to confirm' : 'Delete chat'}
-              >
-                <Trash2 size={11} />
-              </button>
-            </div>
-          </>
+                {tag}
+              </span>
+            ))}
+          </div>
         )}
-      </button>
+      </div>
     )
   }
 
@@ -276,6 +345,35 @@ export function Sidebar({
         </div>
       )}
 
+      {/* Folder filter tabs */}
+      {!effectiveCollapsed && folders.length > 0 && (
+        <div className="px-2 pb-1 shrink-0 flex gap-1 overflow-x-auto">
+          <button
+            onClick={() => setActiveFolder(null)}
+            className={clsx('shrink-0 text-[10px] px-2 py-0.5 rounded-full', !activeFolder ? 'text-white' : 'btn-ghost')}
+            style={!activeFolder ? { background: 'var(--accent)' } : undefined}
+          >All</button>
+          {folders.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setActiveFolder(f.id)}
+              className={clsx('shrink-0 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1', activeFolder === f.id ? 'text-white' : 'btn-ghost')}
+              style={activeFolder === f.id ? { background: f.color } : undefined}
+            >
+              <Folder size={9} />
+              {f.name}
+            </button>
+          ))}
+          <button
+            onClick={() => { const name = prompt('Folder name:'); if (name) addFolder(name) }}
+            className="shrink-0 text-[10px] px-2 py-0.5 rounded-full btn-ghost"
+            style={{ color: 'var(--accent)' }}
+          >
+            <FolderPlus size={10} />
+          </button>
+        </div>
+      )}
+
       {/* Chat list */}
       <div className="flex-1 overflow-y-auto min-h-0 py-1 px-1">
         {sorted.length === 0 && !effectiveCollapsed && (
@@ -283,9 +381,11 @@ export function Sidebar({
             {searchQuery ? 'No matching chats.' : 'No chats yet. Start a new one!'}
           </p>
         )}
-        {sorted.map((chat) => (
-          <ChatRow key={chat.id} chat={chat} />
-        ))}
+        {sorted
+          .filter((c) => !activeFolder || c.folderId === activeFolder)
+          .map((chat) => (
+            <ChatRow key={chat.id} chat={chat} />
+          ))}
       </div>
 
       {/* Footer */}

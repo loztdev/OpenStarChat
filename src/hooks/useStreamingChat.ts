@@ -3,6 +3,7 @@ import { streamChat } from '../api/openrouter'
 import { streamFree, getPollinationsProvider, getCustomProvider } from '../api/freeProvider'
 import { useChatStore } from '../store/chatStore'
 import { useSettingsStore } from '../store/settingsStore'
+import { useMemoryStore } from '../store/memoryStore'
 import type { Message } from '../types'
 
 export function useStreamingChat() {
@@ -16,6 +17,8 @@ export function useStreamingChat() {
   const apiKey = useSettingsStore((s) => s.apiKey)
   const freeProvider = useSettingsStore((s) => s.freeProvider)
   const pushRecentModel = useSettingsStore((s) => s.pushRecentModel)
+
+  const getActiveMemoryPrompt = useMemoryStore((s) => s.getActiveMemoryPrompt)
 
   const useFree = freeProvider.enabled && !apiKey
 
@@ -99,7 +102,9 @@ export function useStreamingChat() {
       { role: 'user' as const, content: userContent, imageUrl },
     ]
 
-    _stream(chatId, historyMessages, chat.modelId, chat.systemPrompt || undefined)
+    const memoryPrompt = getActiveMemoryPrompt()
+    const fullSystemPrompt = [memoryPrompt, chat.systemPrompt].filter(Boolean).join('\n\n') || undefined
+    _stream(chatId, historyMessages, chat.modelId, fullSystemPrompt)
   }
 
   function regenerate(chatId: string) {
@@ -127,7 +132,9 @@ export function useStreamingChat() {
 
     cancelRef.current?.()
     pushRecentModel(chat.modelId)
-    _stream(chatId, historyMessages, chat.modelId, chat.systemPrompt || undefined)
+    const memoryPrompt2 = getActiveMemoryPrompt()
+    const fullSys2 = [memoryPrompt2, chat.systemPrompt].filter(Boolean).join('\n\n') || undefined
+    _stream(chatId, historyMessages, chat.modelId, fullSys2)
   }
 
   function editAndResend(chatId: string, messageId: string, newContent: string) {
@@ -156,7 +163,9 @@ export function useStreamingChat() {
 
     cancelRef.current?.()
     pushRecentModel(chat.modelId)
-    _stream(chatId, historyMessages, chat.modelId, chat.systemPrompt || undefined)
+    const memoryPrompt3 = getActiveMemoryPrompt()
+    const fullSys3 = [memoryPrompt3, chat.systemPrompt].filter(Boolean).join('\n\n') || undefined
+    _stream(chatId, historyMessages, chat.modelId, fullSys3)
   }
 
   return { sendMessage, regenerate, editAndResend, isStreaming, cancelStream, useFreeProvider: useFree }

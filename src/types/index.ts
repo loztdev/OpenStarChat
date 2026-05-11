@@ -37,6 +37,17 @@ export interface Chat {
   createdAt: number
   updatedAt: number
   pinned?: boolean
+  folderId?: string | null
+  tags?: string[]
+  temperature?: number
+  maxTokens?: number
+}
+
+export interface ChatFolder {
+  id: string
+  name: string
+  color: string
+  createdAt: number
 }
 
 export interface Character {

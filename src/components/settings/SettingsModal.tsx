@@ -6,6 +6,7 @@ import { fetchModels } from '../../api/openrouter'
 import { POLLINATIONS_MODELS } from '../../api/freeProvider'
 import { THEME_SWATCHES } from '../../types'
 import type { ThemeName, IdleAnimation, CustomThemeVars } from '../../types'
+import { MemoryManager } from './MemoryManager'
 import clsx from 'clsx'
 
 interface SettingsModalProps {
@@ -186,6 +187,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               {!apiKey && !freeProvider.enabled && ' Requires an API key or free provider to be configured.'}
             </p>
           </section>
+
+          {/* Conversation Memory */}
+          <MemoryManager />
 
           {/* Theme */}
           <section>

@@ -1,9 +1,10 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Chat, Message, Character, Prompt } from '../types'
+import type { Chat, Message, Character, Prompt, ChatFolder } from '../types'
 import { BUILT_IN_PROMPTS } from '../data/builtInPrompts'
 import { BUILT_IN_CHARACTERS } from '../data/builtInCharacters'
 import { useSettingsStore } from './settingsStore'
+import { downloadFile } from '../utils/download'
 
 function nanoid(): string {
   return Math.random().toString(36).slice(2, 11) + Date.now().toString(36)
@@ -14,10 +15,12 @@ interface ChatState {
   activeChatId: string | null
   prompts: Prompt[]
   characters: Character[]
+  folders: ChatFolder[]
 
   // Chat actions
   createChat: (modelId: string) => string
   updateChat: (id: string, updates: Partial<Omit<Chat, 'id'>>) => void
+  renameChat: (id: string, title: string) => void
   deleteChat: (id: string) => void
   setActiveChatId: (id: string | null) => void
   addMessage: (chatId: string, message: Omit<Message, 'id' | 'createdAt'>) => Message
@@ -34,6 +37,13 @@ interface ChatState {
   exportAll: () => void
   importChats: (chats: Chat[]) => void
   importAll: (data: string) => boolean
+  setChatTags: (chatId: string, tags: string[]) => void
+  setChatFolder: (chatId: string, folderId: string | null) => void
+
+  // Folder actions
+  addFolder: (name: string, color?: string) => string
+  renameFolder: (id: string, name: string) => void
+  deleteFolder: (id: string) => void
 
   // Prompt actions
   addPrompt: (p: Omit<Prompt, 'id'>) => void
@@ -53,6 +63,7 @@ export const useChatStore = create<ChatState>()(
       activeChatId: null,
       prompts: BUILT_IN_PROMPTS,
       characters: BUILT_IN_CHARACTERS,
+      folders: [],
 
       createChat: (modelId) => {
         const id = nanoid()
@@ -75,6 +86,14 @@ export const useChatStore = create<ChatState>()(
         set((s) => ({
           chats: s.chats.map((c) =>
             c.id === id ? { ...c, ...updates, updatedAt: Date.now() } : c
+          ),
+        }))
+      },
+
+      renameChat: (id, title) => {
+        set((s) => ({
+          chats: s.chats.map((c) =>
+            c.id === id ? { ...c, title, updatedAt: Date.now() } : c
           ),
         }))
       },
@@ -219,15 +238,8 @@ export const useChatStore = create<ChatState>()(
 
       exportChats: () => {
         const { chats } = get()
-        const blob = new Blob([JSON.stringify(chats, null, 2)], {
-          type: 'application/json',
-        })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `openstarchat-${new Date().toISOString().slice(0, 10)}.json`
-        a.click()
-        URL.revokeObjectURL(url)
+        const date = new Date().toISOString().slice(0, 10)
+        downloadFile(JSON.stringify(chats, null, 2), `openstarchat-${date}.json`, 'application/json')
       },
 
       exportChatsMarkdown: () => {
@@ -246,13 +258,8 @@ export const useChatStore = create<ChatState>()(
           lines.push('---')
           lines.push('')
         }
-        const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `openstarchat-${new Date().toISOString().slice(0, 10)}.md`
-        a.click()
-        URL.revokeObjectURL(url)
+        const date = new Date().toISOString().slice(0, 10)
+        downloadFile(lines.join('\n'), `openstarchat-${date}.md`, 'text/markdown')
       },
 
       exportChatsText: () => {
@@ -270,22 +277,18 @@ export const useChatStore = create<ChatState>()(
           }
           lines.push('')
         }
-        const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `openstarchat-${new Date().toISOString().slice(0, 10)}.txt`
-        a.click()
-        URL.revokeObjectURL(url)
+        const date = new Date().toISOString().slice(0, 10)
+        downloadFile(lines.join('\n'), `openstarchat-${date}.txt`, 'text/plain')
       },
 
       exportAll: () => {
-        const { chats, prompts, characters } = get()
+        const { chats, prompts, characters, folders } = get()
         const settings = useSettingsStore.getState()
         const bundle = {
           version: 1,
           exportedAt: new Date().toISOString(),
           chats,
+          folders,
           prompts: prompts.filter((p) => !p.isBuiltIn),
           characters: characters.filter((c) => !c.isBuiltIn),
           settings: {
@@ -298,15 +301,8 @@ export const useChatStore = create<ChatState>()(
             predictiveText: settings.predictiveText,
           },
         }
-        const blob = new Blob([JSON.stringify(bundle, null, 2)], {
-          type: 'application/json',
-        })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `openstarchat-full-backup-${new Date().toISOString().slice(0, 10)}.json`
-        a.click()
-        URL.revokeObjectURL(url)
+        const date = new Date().toISOString().slice(0, 10)
+        downloadFile(JSON.stringify(bundle, null, 2), `openstarchat-full-backup-${date}.json`, 'application/json')
       },
 
       importChats: (incoming) => {
@@ -363,6 +359,44 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
+      setChatTags: (chatId, tags) => {
+        set((s) => ({
+          chats: s.chats.map((c) =>
+            c.id === chatId ? { ...c, tags, updatedAt: Date.now() } : c
+          ),
+        }))
+      },
+
+      setChatFolder: (chatId, folderId) => {
+        set((s) => ({
+          chats: s.chats.map((c) =>
+            c.id === chatId ? { ...c, folderId, updatedAt: Date.now() } : c
+          ),
+        }))
+      },
+
+      addFolder: (name, color) => {
+        const id = nanoid()
+        const folder: ChatFolder = { id, name, color: color ?? '#7c6af7', createdAt: Date.now() }
+        set((s) => ({ folders: [...s.folders, folder] }))
+        return id
+      },
+
+      renameFolder: (id, name) => {
+        set((s) => ({
+          folders: s.folders.map((f) => (f.id === id ? { ...f, name } : f)),
+        }))
+      },
+
+      deleteFolder: (id) => {
+        set((s) => ({
+          folders: s.folders.filter((f) => f.id !== id),
+          chats: s.chats.map((c) =>
+            c.folderId === id ? { ...c, folderId: null } : c
+          ),
+        }))
+      },
+
       addPrompt: (p) => {
         const prompt: Prompt = { ...p, id: nanoid() }
         set((s) => ({ prompts: [...s.prompts, prompt] }))
@@ -403,6 +437,7 @@ export const useChatStore = create<ChatState>()(
           messages: c.messages.map((m) => ({ ...m, isStreaming: false })),
         })),
         activeChatId: state.activeChatId,
+        folders: state.folders,
         prompts: state.prompts.filter((p) => !p.isBuiltIn),
         characters: state.characters.filter((c) => !c.isBuiltIn),
       }),
@@ -412,6 +447,7 @@ export const useChatStore = create<ChatState>()(
           ...current,
           chats: p.chats ?? [],
           activeChatId: p.activeChatId ?? null,
+          folders: (p as Record<string, unknown>).folders as ChatFolder[] ?? [],
           prompts: [
             ...BUILT_IN_PROMPTS,
             ...(p.prompts ?? []),
