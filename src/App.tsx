@@ -7,6 +7,7 @@ import { CharacterSelector } from './components/characters/CharacterSelector'
 import { CharactersPage } from './components/characters/CharactersPage'
 import { SettingsModal } from './components/settings/SettingsModal'
 import { BookmarksPanel } from './components/bookmarks/BookmarksPanel'
+import { UsagePanel } from './components/usage/UsagePanel'
 import { CompareView } from './components/chat/CompareView'
 import type { CompareViewHandle } from './components/chat/CompareView'
 import { Starfield } from './components/Starfield'
@@ -22,6 +23,7 @@ export default function App() {
   const [showPrompts, setShowPrompts] = useState(false)
   const [showCharacters, setShowCharacters] = useState(false)
   const [showBookmarks, setShowBookmarks] = useState(false)
+  const [showUsage, setShowUsage] = useState(false)
   const [showCompare, setShowCompare] = useState(false)
   const [comparePickerSlot, setComparePickerSlot] = useState<number | null>(null)
   const compareRef = useRef<CompareViewHandle>(null)
@@ -55,6 +57,7 @@ export default function App() {
         setShowPrompts(false)
         setShowCharacters(false)
         setShowBookmarks(false)
+        setShowUsage(false)
         setIsIdle(false)
         return
       }
@@ -74,6 +77,9 @@ export default function App() {
         } else if (e.key === 'b' || e.key === 'B') {
           e.preventDefault()
           setShowBookmarks((v) => !v)
+        } else if (e.key === 'u' || e.key === 'U') {
+          e.preventDefault()
+          setShowUsage((v) => !v)
         } else if (e.key === ',') {
           e.preventDefault()
           setShowSettings((v) => !v)
@@ -98,6 +104,7 @@ export default function App() {
       <AppLayout
         onOpenSettings={() => setShowSettings(true)}
         onOpenBookmarks={() => setShowBookmarks(true)}
+        onOpenUsage={() => setShowUsage(true)}
         view={view}
         onChangeView={setView}
         sidebarOpen={sidebarOpen}
@@ -141,6 +148,7 @@ export default function App() {
           onNavigateToChat={handleNavigateToChat}
         />
       )}
+      {showUsage && <UsagePanel onClose={() => setShowUsage(false)} />}
 
       {/* Compare View */}
       {showCompare && (

@@ -1,11 +1,25 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { Copy, Check, Bookmark, BookmarkCheck, Edit2, RefreshCw, GitBranch, X } from 'lucide-react'
+import {
+  Copy,
+  Check,
+  Bookmark,
+  BookmarkCheck,
+  Edit2,
+  RefreshCw,
+  GitBranch,
+  X,
+  Volume2,
+} from 'lucide-react'
 import clsx from 'clsx'
 import type { Message as MessageType, Character } from '../../types'
+import { MarkdownContent } from './MarkdownContent'
+import { useSettingsStore } from '../../store/settingsStore'
+import { elevenLabsSpeak } from '../../api/elevenlabs'
 
 interface MessageProps {
   message: MessageType
@@ -42,6 +56,16 @@ function estimateCost(tokenCount: number): string | null {
   return `~${tokenCount} tokens`
 }
 
+function userImageUrls(m: MessageType): string[] {
+  if (m.imageUrls?.length) return m.imageUrls
+  if (m.imageUrl) return [m.imageUrl]
+  return []
+}
+
+function stripMdForSpeech(s: string): string {
+  return s.replace(/```[\s\S]*?```/g, ' ').replace(/`+/g, '').replace(/\*\*|__/g, '').replace(/[*_]/g, '').trim()
+}
+
 export function Message({
   message,
   chatId: _chatId,
@@ -54,9 +78,43 @@ export function Message({
   onBranch,
 }: MessageProps) {
   const isUser = message.role === 'user'
-  const showCharAvatar = !isUser && !!character
+  const isTool = message.role === 'tool'
+  const showCharAvatar = !isUser && !isTool && !!character
   const [editing, setEditing] = useState(false)
   const [editDraft, setEditDraft] = useState(message.content)
+  const [ttsBusy, setTtsBusy] = useState(false)
+
+  const ttsProvider = useSettingsStore((s) => s.ttsProvider)
+  const elevenLabsApiKey = useSettingsStore((s) => s.elevenLabsApiKey)
+  const elevenLabsVoiceId = useSettingsStore((s) => s.elevenLabsVoiceId)
+
+  const speakAssistant = useCallback(async () => {
+    const plain = stripMdForSpeech(message.content)
+    if (!plain) return
+    window.speechSynthesis.cancel()
+    setTtsBusy(true)
+    try {
+      if (ttsProvider === 'elevenlabs' && elevenLabsApiKey.trim() && elevenLabsVoiceId.trim()) {
+        await elevenLabsSpeak({
+          apiKey: elevenLabsApiKey.trim(),
+          voiceId: elevenLabsVoiceId.trim(),
+          text: plain.slice(0, 2500),
+        })
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          const u = new SpeechSynthesisUtterance(plain.slice(0, 8000))
+          u.onend = () => resolve()
+          u.onerror = () => reject(new Error('speech'))
+          window.speechSynthesis.speak(u)
+        })
+      }
+    } catch {
+      const u = new SpeechSynthesisUtterance(plain.slice(0, 8000))
+      window.speechSynthesis.speak(u)
+    } finally {
+      setTtsBusy(false)
+    }
+  }, [message.content, ttsProvider, elevenLabsApiKey, elevenLabsVoiceId])
 
   function submitEdit() {
     const trimmed = editDraft.trim()
@@ -71,14 +129,18 @@ export function Message({
     setEditing(false)
   }
 
+  if (isTool) {
+    return (
+      <div className="group flex gap-2 px-6 py-1 text-xs font-mono opacity-90" style={{ color: 'var(--text-secondary)' }}>
+        <span className="shrink-0">🔧 tool</span>
+        <pre className="whitespace-pre-wrap break-words flex-1 m-0">{message.content}</pre>
+        <CopyButton text={message.content} />
+      </div>
+    )
+  }
+
   return (
-    <div
-      className={clsx(
-        'flex gap-3 px-4 py-3 group',
-        isUser ? 'flex-row-reverse' : 'flex-row'
-      )}
-    >
-      {/* Avatar */}
+    <div className={clsx('flex gap-3 px-4 py-3 group', isUser ? 'flex-row-reverse' : 'flex-row')}>
       {showCharAvatar && character ? (
         character.avatarUrl ? (
           <img
@@ -110,8 +172,18 @@ export function Message({
         </div>
       )}
 
-      {/* Bubble */}
       <div className={clsx('flex flex-col gap-1 max-w-[80%]', isUser ? 'items-end' : 'items-start')}>
+        {!isUser && message.reasoning?.trim() && (
+          <details className="text-xs w-full max-w-xl rounded-lg border border-subtle px-2 py-1.5" style={{ background: 'var(--bg-tertiary)' }}>
+            <summary className="cursor-pointer select-none" style={{ color: 'var(--text-secondary)' }}>
+              Thinking
+            </summary>
+            <pre className="mt-1 whitespace-pre-wrap break-words m-0 font-sans" style={{ color: 'var(--text-primary)' }}>
+              {message.reasoning}
+            </pre>
+          </details>
+        )}
+
         <div
           className="rounded-2xl px-4 py-2.5 text-sm leading-relaxed relative"
           style={{
@@ -119,14 +191,14 @@ export function Message({
             borderRadius: isUser ? '1rem 0.25rem 1rem 1rem' : '0.25rem 1rem 1rem 1rem',
           }}
         >
-          {/* Attached image */}
-          {message.imageUrl && (
+          {userImageUrls(message).map((url) => (
             <img
-              src={message.imageUrl}
+              key={url.slice(0, 40)}
+              src={url}
               alt="Attached"
               className="max-w-xs max-h-48 rounded-lg mb-2 object-contain"
             />
-          )}
+          ))}
 
           {editing && isUser ? (
             <div className="flex flex-col gap-2">
@@ -137,7 +209,10 @@ export function Message({
                 style={{ color: 'var(--text-primary)' }}
                 autoFocus
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitEdit() }
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    submitEdit()
+                  }
                   if (e.key === 'Escape') cancelEdit()
                 }}
               />
@@ -151,18 +226,19 @@ export function Message({
               </div>
             </div>
           ) : isUser ? (
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            <div className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+              <MarkdownContent text={message.content} variant="user" />
+            </div>
           ) : (
             <div
               className={clsx(
                 'prose prose-sm max-w-none',
-                message.isStreaming && !message.content && 'streaming-cursor'
+                message.isStreaming && !message.content && 'streaming-cursor',
               )}
               style={{ color: 'var(--text-primary)' }}
             >
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                disallowedElements={['script']}
+                remarkPlugins={[remarkGfm, remarkBreaks]}
                 components={{
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '')
@@ -199,12 +275,7 @@ export function Message({
                   },
                   a({ href, children }) {
                     return (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: 'var(--accent)' }}
-                      >
+                      <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>
                         {children}
                       </a>
                     )
@@ -220,7 +291,15 @@ export function Message({
                   },
                   th({ children }) {
                     return (
-                      <th style={{ borderBottom: '1px solid var(--border)', padding: '0.4rem 0.75rem', textAlign: 'left', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                      <th
+                        style={{
+                          borderBottom: '1px solid var(--border)',
+                          padding: '0.4rem 0.75rem',
+                          textAlign: 'left',
+                          color: 'var(--text-secondary)',
+                          fontWeight: 600,
+                        }}
+                      >
                         {children}
                       </th>
                     )
@@ -236,22 +315,31 @@ export function Message({
               >
                 {message.content}
               </ReactMarkdown>
-              {message.isStreaming && message.content && (
-                <span className="streaming-cursor" />
-              )}
+              {message.isStreaming && message.content ? <span className="streaming-cursor" /> : null}
             </div>
           )}
         </div>
 
-        {/* Action row */}
         <div className={clsx('flex items-center gap-0.5', isUser ? 'flex-row-reverse' : 'flex-row')}>
           <CopyButton text={message.content} />
+
+          {!isUser && !isStreaming && message.content.trim() && (
+            <button
+              type="button"
+              onClick={() => void speakAssistant()}
+              disabled={ttsBusy}
+              className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity btn-ghost disabled:opacity-40"
+              title={ttsProvider === 'elevenlabs' ? 'Read aloud (ElevenLabs or browser fallback)' : 'Read aloud (browser)'}
+            >
+              <Volume2 size={13} />
+            </button>
+          )}
 
           <button
             onClick={() => onBookmark(message.id)}
             className={clsx(
               'p-1 rounded transition-opacity btn-ghost',
-              message.bookmarked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              message.bookmarked ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
             )}
             style={message.bookmarked ? { color: 'var(--accent)' } : undefined}
             title={message.bookmarked ? 'Remove bookmark' : 'Bookmark'}
@@ -261,7 +349,10 @@ export function Message({
 
           {isUser && !isStreaming && (
             <button
-              onClick={() => { setEditDraft(message.content); setEditing(true) }}
+              onClick={() => {
+                setEditDraft(message.content)
+                setEditing(true)
+              }}
               className="p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity btn-ghost"
               title="Edit message"
             >
@@ -288,7 +379,10 @@ export function Message({
           </button>
 
           {message.tokenCount != null && (
-            <span className="text-xs opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--text-secondary)' }}>
+            <span
+              className="text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ color: 'var(--text-secondary)' }}
+            >
               {estimateCost(message.tokenCount)}
             </span>
           )}

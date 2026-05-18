@@ -5,6 +5,7 @@ interface AppLayoutProps {
   children: React.ReactNode
   onOpenSettings: () => void
   onOpenBookmarks: () => void
+  onOpenUsage: () => void
   view: 'chat' | 'characters'
   onChangeView: (v: 'chat' | 'characters') => void
   sidebarOpen: boolean
@@ -15,6 +16,7 @@ export function AppLayout({
   children,
   onOpenSettings,
   onOpenBookmarks,
+  onOpenUsage,
   view,
   onChangeView,
   sidebarOpen,
@@ -48,6 +50,7 @@ export function AppLayout({
         onToggle={() => setSidebarCollapsed((v) => !v)}
         onOpenSettings={() => { onOpenSettings(); closeMobile() }}
         onOpenBookmarks={() => { onOpenBookmarks(); closeMobile() }}
+        onOpenUsage={() => { onOpenUsage(); closeMobile() }}
         view={view}
         onChangeView={handleChangeView}
         mobileOpen={sidebarOpen}

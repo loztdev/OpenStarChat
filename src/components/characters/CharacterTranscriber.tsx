@@ -6,7 +6,7 @@ import {
 import { useSettingsStore } from '../../store/settingsStore'
 import { completeChat } from '../../api/openrouter'
 import { ModelPicker } from '../models/ModelPicker'
-import type { Character } from '../../types'
+import type { Character, Message } from '../../types'
 
 const EMOJI_OPTIONS = ['🌸', '💻', '✍️', '🧙', '🃏', '🔮', '🦊', '🐉', '🌙', '⚡', '🎯', '🧪', '🤖', '👾', '🦋']
 const COLOR_OPTIONS = ['#bd93f9', '#50fa7b', '#ffb86c', '#8be9fd', '#ff79c6', '#ff5555', '#f1fa8c', '#268bd2', '#2aa198', '#859900']
@@ -216,19 +216,17 @@ export function CharacterTranscriber({ onAccept, onCancel }: CharacterTranscribe
         ? `Source material follows. Synthesize a single character sheet that faithfully reflects every concrete detail.\n\n${segments.join('\n\n')}`
         : 'The only source material is the attached reference image(s). Build the character sheet primarily from what you can see.'
 
-      const userContent: Array<
-        | { role: 'user'; content: string }
-      > = [
-        { role: 'user', content: userText },
+      const userContent: Message[] = [
+        { id: 'u0', role: 'user', content: userText, createdAt: Date.now() },
       ]
 
-      // Send reference images as multimodal user messages so vision-capable models can read them.
-      // We piggyback on the existing API by attaching one image per message.
-      // (completeChat supports a single imageUrl per message via the buildApiMessage helper.)
-      const imageMessages = refImages.map((img) => ({
+      const imageMessages: Message[] = refImages.map((img, i) => ({
+        id: `img-${i}`,
         role: 'user' as const,
         content: 'Reference image for the character.',
         imageUrl: img.content,
+        imageUrls: [img.content],
+        createdAt: Date.now() + i + 1,
       }))
 
       const text = await completeChat({

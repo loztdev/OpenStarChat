@@ -1,18 +1,8 @@
 import type { Message } from '../types'
 import type { ApiMessage } from './openrouter'
-
-function buildApiMessage(msg: Pick<Message, 'role' | 'content' | 'imageUrl'>): ApiMessage {
-  if (msg.role === 'user' && msg.imageUrl) {
-    return {
-      role: 'user',
-      content: [
-        { type: 'image_url', image_url: { url: msg.imageUrl } },
-        { type: 'text', text: msg.content },
-      ],
-    }
-  }
-  return { role: msg.role, content: msg.content }
-}
+import { messageToApiMessage } from './openrouter'
+import { mergeToolCallDeltas, accumulatorToOpenAIToolCalls, type ToolCallAccumulator } from './builtinTools'
+import type { StreamDoneMeta } from './openrouter'
 
 export interface FreeProviderInfo {
   baseUrl: string
@@ -35,10 +25,7 @@ export const POLLINATIONS_MODELS = [
   { id: 'claude-hybridspace', label: 'Claude (via HybridSpace)' },
 ] as const
 
-export function getPollinationsProvider(
-  apiKey: string,
-  model: string,
-): FreeProviderInfo {
+export function getPollinationsProvider(apiKey: string, model: string): FreeProviderInfo {
   return {
     baseUrl: POLLINATIONS_BASE,
     apiKey,
@@ -46,11 +33,7 @@ export function getPollinationsProvider(
   }
 }
 
-export function getCustomProvider(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
-): FreeProviderInfo {
+export function getCustomProvider(baseUrl: string, apiKey: string, model: string): FreeProviderInfo {
   return {
     baseUrl: baseUrl.replace(/\/+$/, ''),
     apiKey,
@@ -60,20 +43,48 @@ export function getCustomProvider(
 
 export type StreamFreeOptions = {
   provider: FreeProviderInfo
-  messages: Pick<Message, 'role' | 'content' | 'imageUrl'>[]
+  messages: Message[]
   systemPrompt?: string
+  temperature?: number
+  maxTokens?: number
+  tools?: unknown[]
+  toolChoice?: unknown
+  responseFormat?: unknown
   onDelta: (delta: string) => void
-  onDone: (tokenCount?: number) => void
+  onReasoningDelta?: (delta: string) => void
+  onDone: (tokenCount?: number, meta?: StreamDoneMeta) => void
   onError: (err: Error) => void
 }
 
+function extractReasoningChunk(delta: Record<string, unknown>): string {
+  const r = delta.reasoning ?? delta.reasoning_content
+  if (typeof r === 'string') return r
+  if (r && typeof r === 'object' && 'text' in r && typeof (r as { text?: unknown }).text === 'string') {
+    return (r as { text: string }).text
+  }
+  return ''
+}
+
 export function streamFree(opts: StreamFreeOptions): () => void {
-  const { provider, messages, systemPrompt, onDelta, onDone, onError } = opts
+  const {
+    provider,
+    messages,
+    systemPrompt,
+    onDelta,
+    onReasoningDelta,
+    onDone,
+    onError,
+    temperature,
+    maxTokens,
+    tools,
+    toolChoice,
+    responseFormat,
+  } = opts
   const controller = new AbortController()
 
   const apiMessages: ApiMessage[] = systemPrompt
-    ? [{ role: 'system', content: systemPrompt }, ...messages.map(buildApiMessage)]
-    : messages.map(buildApiMessage)
+    ? [{ role: 'system', content: systemPrompt }, ...messages.map((m) => messageToApiMessage(m))]
+    : messages.map((m) => messageToApiMessage(m))
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -82,17 +93,26 @@ export function streamFree(opts: StreamFreeOptions): () => void {
     headers['Authorization'] = `Bearer ${provider.apiKey}`
   }
 
+  const body: Record<string, unknown> = {
+    model: provider.model,
+    stream: true,
+    messages: apiMessages,
+    ...(temperature !== undefined ? { temperature } : {}),
+    ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+  }
+  if (tools?.length) {
+    body.tools = tools
+    body.tool_choice = toolChoice ?? 'auto'
+  }
+  if (responseFormat) body.response_format = responseFormat
+
   ;(async () => {
     let res: Response
     try {
       res = await fetch(`${provider.baseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          model: provider.model,
-          stream: true,
-          messages: apiMessages,
-        }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       })
     } catch (err) {
@@ -110,12 +130,15 @@ export function streamFree(opts: StreamFreeOptions): () => void {
     const decoder = new TextDecoder()
     let buffer = ''
     let totalChars = 0
+    let finishReason: string | null | undefined
+    const toolAcc: ToolCallAccumulator = new Map()
 
     try {
       while (true) {
         const { done, value } = await reader.read()
         if (done) {
-          onDone(Math.ceil(totalChars / 4))
+          const toolCalls = toolAcc.size ? accumulatorToOpenAIToolCalls(toolAcc) : null
+          onDone(Math.ceil(totalChars / 4), { finishReason, toolCalls: toolCalls?.length ? toolCalls : null })
           break
         }
 
@@ -128,15 +151,35 @@ export function streamFree(opts: StreamFreeOptions): () => void {
           if (!trimmed.startsWith('data: ')) continue
           const data = trimmed.slice(6)
           if (data === '[DONE]') {
-            onDone(Math.ceil(totalChars / 4))
+            const toolCalls = toolAcc.size ? accumulatorToOpenAIToolCalls(toolAcc) : null
+            onDone(Math.ceil(totalChars / 4), { finishReason, toolCalls: toolCalls?.length ? toolCalls : null })
             return
           }
           try {
-            const parsed = JSON.parse(data)
-            const delta = parsed.choices?.[0]?.delta?.content
-            if (typeof delta === 'string' && delta) {
-              totalChars += delta.length
-              onDelta(delta)
+            const parsed = JSON.parse(data) as {
+              choices?: Array<{
+                delta?: Record<string, unknown>
+                finish_reason?: string | null
+              }>
+            }
+            const choice = parsed.choices?.[0]
+            if (choice?.finish_reason) finishReason = choice.finish_reason
+
+            const d = choice?.delta
+            if (d && typeof d === 'object') {
+              const reasoning = extractReasoningChunk(d)
+              if (reasoning) onReasoningDelta?.(reasoning)
+
+              const delta = d.content
+              if (typeof delta === 'string' && delta) {
+                totalChars += delta.length
+                onDelta(delta)
+              }
+
+              const rawTc = d.tool_calls as
+                | Array<{ index?: number; id?: string; function?: { name?: string; arguments?: string } }>
+                | undefined
+              if (Array.isArray(rawTc) && rawTc.length) mergeToolCallDeltas(toolAcc, rawTc)
             }
           } catch {
             // malformed chunk
@@ -153,7 +196,7 @@ export function streamFree(opts: StreamFreeOptions): () => void {
 
 export type CompleteFreeOptions = {
   provider: FreeProviderInfo
-  messages: Pick<Message, 'role' | 'content' | 'imageUrl'>[]
+  messages: Message[]
   systemPrompt?: string
   signal?: AbortSignal
   temperature?: number
@@ -164,8 +207,8 @@ export async function completeFree(opts: CompleteFreeOptions): Promise<string> {
   const { provider, messages, systemPrompt, signal, temperature, maxTokens } = opts
 
   const apiMessages: ApiMessage[] = systemPrompt
-    ? [{ role: 'system', content: systemPrompt }, ...messages.map(buildApiMessage)]
-    : messages.map(buildApiMessage)
+    ? [{ role: 'system', content: systemPrompt }, ...messages.map((m) => messageToApiMessage(m))]
+    : messages.map((m) => messageToApiMessage(m))
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

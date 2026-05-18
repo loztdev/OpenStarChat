@@ -112,6 +112,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const customThemeVars = useSettingsStore((s) => s.customThemeVars)
   const freeProvider = useSettingsStore((s) => s.freeProvider)
   const predictiveText = useSettingsStore((s) => s.predictiveText)
+  const useAiChatTitles = useSettingsStore((s) => s.useAiChatTitles)
+  const ttsProvider = useSettingsStore((s) => s.ttsProvider)
+  const elevenLabsApiKey = useSettingsStore((s) => s.elevenLabsApiKey)
+  const elevenLabsVoiceId = useSettingsStore((s) => s.elevenLabsVoiceId)
   const setApiKey = useSettingsStore((s) => s.setApiKey)
   const setBuilderApiKey = useSettingsStore((s) => s.setBuilderApiKey)
   const setTheme = useSettingsStore((s) => s.setTheme)
@@ -119,6 +123,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const setCustomThemeVars = useSettingsStore((s) => s.setCustomThemeVars)
   const setFreeProvider = useSettingsStore((s) => s.setFreeProvider)
   const setPredictiveText = useSettingsStore((s) => s.setPredictiveText)
+  const setUseAiChatTitles = useSettingsStore((s) => s.setUseAiChatTitles)
+  const setTtsProvider = useSettingsStore((s) => s.setTtsProvider)
+  const setElevenLabsApiKey = useSettingsStore((s) => s.setElevenLabsApiKey)
+  const setElevenLabsVoiceId = useSettingsStore((s) => s.setElevenLabsVoiceId)
 
   return (
     <div
@@ -186,6 +194,83 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               Shows AI-powered text suggestions as you type. Press <strong>Tab</strong> to accept.
               {!apiKey && !freeProvider.enabled && ' Requires an API key or free provider to be configured.'}
             </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold text-sm mb-3">Chat titles</h3>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div
+                onClick={() => setUseAiChatTitles(!useAiChatTitles)}
+                className="w-10 h-5 rounded-full relative transition-colors cursor-pointer"
+                style={{
+                  background: useAiChatTitles ? 'var(--accent)' : 'var(--bg-tertiary)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <div
+                  className="absolute top-0.5 w-3.5 h-3.5 rounded-full transition-transform"
+                  style={{
+                    background: useAiChatTitles ? 'white' : 'var(--text-secondary)',
+                    transform: useAiChatTitles ? 'translateX(22px)' : 'translateX(3px)',
+                  }}
+                />
+              </div>
+              <span className="text-sm">{useAiChatTitles ? 'AI titles' : 'First line as title'}</span>
+            </label>
+            <p className="text-xs text-muted mt-2">
+              When on, new chats stay named &quot;New Chat&quot; until the first reply, then a small model suggests a
+              short title. When off, the first user message still seeds the title (legacy behavior).
+            </p>
+          </section>
+
+          <section>
+            <h3 className="font-semibold text-sm mb-3">Read aloud (assistant)</h3>
+            <div className="flex flex-col gap-2 text-sm">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="tts"
+                  checked={ttsProvider === 'browser'}
+                  onChange={() => setTtsProvider('browser')}
+                />
+                Browser voices (free, offline-capable)
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="tts"
+                  checked={ttsProvider === 'elevenlabs'}
+                  onChange={() => setTtsProvider('elevenlabs')}
+                />
+                ElevenLabs (API key; may be blocked by CORS in some browsers — falls back to browser)
+              </label>
+            </div>
+            {ttsProvider === 'elevenlabs' && (
+              <div className="mt-3 space-y-2">
+                <div>
+                  <label className="text-xs text-muted block mb-1">ElevenLabs API key</label>
+                  <input
+                    type="password"
+                    value={elevenLabsApiKey}
+                    onChange={(e) => setElevenLabsApiKey(e.target.value)}
+                    placeholder="xi-api-key…"
+                    className="w-full px-3 py-2 rounded-lg border border-subtle text-sm font-mono bg-transparent outline-none"
+                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-muted block mb-1">Voice ID</label>
+                  <input
+                    type="text"
+                    value={elevenLabsVoiceId}
+                    onChange={(e) => setElevenLabsVoiceId(e.target.value)}
+                    placeholder="21m00Tcm4TlvDq8ikWAM"
+                    className="w-full px-3 py-2 rounded-lg border border-subtle text-sm font-mono bg-transparent outline-none"
+                    style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+              </div>
+            )}
           </section>
 
           {/* Conversation Memory */}

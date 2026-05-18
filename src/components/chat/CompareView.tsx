@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { streamChat } from '../../api/openrouter'
 import { streamFree, getPollinationsProvider, getCustomProvider } from '../../api/freeProvider'
 import { useSettingsStore } from '../../store/settingsStore'
+import type { Message } from '../../types'
 
 interface CompareViewProps {
   onClose: () => void
@@ -70,7 +71,9 @@ export const CompareView = forwardRef<CompareViewHandle, CompareViewProps>(
     setResponses(initial)
 
     activeModels.forEach((modelId, idx) => {
-      const messages = [{ role: 'user' as const, content: input.trim() }]
+      const messages: Message[] = [
+        { id: 'compare', role: 'user', content: input.trim(), createdAt: Date.now() },
+      ]
 
       const onDelta = (delta: string) => {
         setResponses((prev) => {

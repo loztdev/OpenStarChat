@@ -64,6 +64,11 @@ interface SettingsState {
   customThemeVars: CustomThemeVars
   freeProvider: FreeProviderConfig
   predictiveText: boolean
+  /** When true, chat titles stay “New Chat” until the first assistant reply, then a small model names the thread. */
+  useAiChatTitles: boolean
+  ttsProvider: 'browser' | 'elevenlabs'
+  elevenLabsApiKey: string
+  elevenLabsVoiceId: string
   setApiKey: (key: string) => void
   setBuilderApiKey: (key: string) => void
   setTheme: (theme: ThemeName) => void
@@ -75,6 +80,10 @@ interface SettingsState {
   setCustomThemeVars: (vars: Partial<CustomThemeVars>) => void
   setFreeProvider: (updates: Partial<FreeProviderConfig>) => void
   setPredictiveText: (v: boolean) => void
+  setUseAiChatTitles: (v: boolean) => void
+  setTtsProvider: (v: 'browser' | 'elevenlabs') => void
+  setElevenLabsApiKey: (key: string) => void
+  setElevenLabsVoiceId: (id: string) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -90,6 +99,10 @@ export const useSettingsStore = create<SettingsState>()(
       customThemeVars: DEFAULT_CUSTOM_THEME,
       freeProvider: DEFAULT_FREE_PROVIDER,
       predictiveText: false,
+      useAiChatTitles: true,
+      ttsProvider: 'browser',
+      elevenLabsApiKey: '',
+      elevenLabsVoiceId: '',
 
       setApiKey: (key) => set({ apiKey: key }),
       setBuilderApiKey: (key) => set({ builderApiKey: key }),
@@ -134,6 +147,10 @@ export const useSettingsStore = create<SettingsState>()(
         set((s) => ({ freeProvider: { ...s.freeProvider, ...updates } })),
 
       setPredictiveText: (v) => set({ predictiveText: v }),
+      setUseAiChatTitles: (v) => set({ useAiChatTitles: v }),
+      setTtsProvider: (v) => set({ ttsProvider: v }),
+      setElevenLabsApiKey: (key) => set({ elevenLabsApiKey: key }),
+      setElevenLabsVoiceId: (id) => set({ elevenLabsVoiceId: id }),
     }),
     {
       name: 'openstarchat-settings',

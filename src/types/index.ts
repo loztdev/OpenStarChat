@@ -16,15 +16,26 @@ export interface Model {
   }
 }
 
+export type MessageRole = 'user' | 'assistant' | 'system' | 'tool'
+
 export interface Message {
   id: string
-  role: 'user' | 'assistant' | 'system'
+  role: MessageRole
   content: string
+  /** @deprecated Prefer imageUrls; kept for persisted chats */
   imageUrl?: string
+  /** Data URLs or https URLs — multimodal user turns */
+  imageUrls?: string[]
   createdAt: number
   isStreaming?: boolean
   bookmarked?: boolean
   tokenCount?: number
+  /** Model reasoning trace (streamed), when the provider exposes it */
+  reasoning?: string
+  /** OpenAI-style tool_calls JSON on an assistant message */
+  assistantToolCalls?: string
+  /** For role === 'tool' — links the tool output to the assistant tool_calls id */
+  toolCallId?: string
 }
 
 export interface Chat {
@@ -41,6 +52,12 @@ export interface Chat {
   tags?: string[]
   temperature?: number
   maxTokens?: number
+  /** When true, register built-in tools (time, random int) the model may call */
+  experimentalTools?: boolean
+  /** Optional extra OpenAI-format tool definitions (JSON array). Merged with built-ins when experimentalTools is on. */
+  toolsJson?: string
+  /** When set, request JSON that matches this JSON Schema object (OpenRouter structured outputs). */
+  jsonSchemaText?: string
 }
 
 export interface ChatFolder {

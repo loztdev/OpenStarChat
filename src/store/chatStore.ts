@@ -25,6 +25,7 @@ interface ChatState {
   setActiveChatId: (id: string | null) => void
   addMessage: (chatId: string, message: Omit<Message, 'id' | 'createdAt'>) => Message
   updateMessage: (chatId: string, messageId: string, content: string) => void
+  patchMessage: (chatId: string, messageId: string, updates: Partial<Message>) => void
   finalizeMessage: (chatId: string, messageId: string, tokenCount?: number) => void
   deleteMessage: (chatId: string, messageId: string) => void
   toggleBookmarkMessage: (chatId: string, messageId: string) => void
@@ -119,9 +120,12 @@ export const useChatStore = create<ChatState>()(
           chats: s.chats.map((c) => {
             if (c.id !== chatId) return c
             const messages = [...c.messages, message]
+            const useAiTitles = useSettingsStore.getState().useAiChatTitles
             const title =
               c.title === 'New Chat' && msg.role === 'user'
-                ? msg.content.slice(0, 52).trim()
+                ? useAiTitles
+                  ? c.title
+                  : msg.content.slice(0, 52).trim()
                 : c.title
             return { ...c, messages, title, updatedAt: Date.now() }
           }),
@@ -137,6 +141,21 @@ export const useChatStore = create<ChatState>()(
               ...c,
               messages: c.messages.map((m) =>
                 m.id === messageId ? { ...m, content } : m
+              ),
+              updatedAt: Date.now(),
+            }
+          }),
+        }))
+      },
+
+      patchMessage: (chatId, messageId, updates) => {
+        set((s) => ({
+          chats: s.chats.map((c) => {
+            if (c.id !== chatId) return c
+            return {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === messageId ? { ...m, ...updates } : m
               ),
               updatedAt: Date.now(),
             }
@@ -431,6 +450,20 @@ export const useChatStore = create<ChatState>()(
     }),
     {
       name: 'openstarchat-chats',
+      version: 1,
+      migrate: (persisted, version) => {
+        const p = persisted as { chats?: Chat[] } | undefined
+        if (version < 1 && p?.chats) {
+          for (const c of p.chats) {
+            for (const m of c.messages ?? []) {
+              if (m.imageUrl && !m.imageUrls?.length) {
+                m.imageUrls = [m.imageUrl]
+              }
+            }
+          }
+        }
+        return persisted as never
+      },
       partialize: (state) => ({
         chats: state.chats.map((c) => ({
           ...c,

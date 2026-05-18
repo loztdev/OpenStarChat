@@ -57,7 +57,7 @@ export function BookmarksPanel({ onClose, onNavigateToChat }: BookmarksPanelProp
                     </button>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-xs text-muted">
-                        {message.role === 'user' ? 'You' : 'AI'}
+                        {message.role === 'user' ? 'You' : message.role === 'tool' ? 'Tool' : 'AI'}
                       </span>
                       <button
                         onClick={() => toggleBookmarkMessage(chat.id, message.id)}

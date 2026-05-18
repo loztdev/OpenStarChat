@@ -143,7 +143,7 @@ export function AICharacterBuilder({ onClose, onAccept, mode }: AICharacterBuild
         modelId,
         systemPrompt,
         temperature: 0.9,
-        messages: [{ role: 'user', content: userContent }],
+        messages: [{ id: 'builder', role: 'user', content: userContent, createdAt: Date.now() }],
       })
       setRawOutput(text)
       const result = tryParseCharacter(text)

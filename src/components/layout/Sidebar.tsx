@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import {
   MessageSquare, Plus, Trash2, Settings, ChevronLeft, ChevronRight,
   Download, Upload, Pin, PinOff, Search, Bookmark, ChevronDown, Users, X, Archive,
-  Pencil, FolderPlus, Folder,
+  Pencil, FolderPlus, Folder, BarChart3,
 } from 'lucide-react'
 import { useChatStore } from '../../store/chatStore'
 import { useSettingsStore } from '../../store/settingsStore'
@@ -14,6 +14,7 @@ interface SidebarProps {
   onToggle: () => void
   onOpenSettings: () => void
   onOpenBookmarks: () => void
+  onOpenUsage: () => void
   view: 'chat' | 'characters'
   onChangeView: (v: 'chat' | 'characters') => void
   /** Whether the mobile overlay is open. Ignored on >= md screens. */
@@ -23,7 +24,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({
-  collapsed, onToggle, onOpenSettings, onOpenBookmarks, view, onChangeView,
+  collapsed, onToggle, onOpenSettings, onOpenBookmarks, onOpenUsage, view, onChangeView,
   mobileOpen = false, onMobileClose,
 }: SidebarProps) {
   const chats = useChatStore((s) => s.chats)
@@ -398,6 +399,15 @@ export function Sidebar({
         >
           <Bookmark size={15} />
           {!effectiveCollapsed && <span>Bookmarks</span>}
+        </button>
+
+        <button
+          onClick={onOpenUsage}
+          className={clsx('btn-ghost flex items-center gap-2 w-full text-sm', effectiveCollapsed ? 'justify-center' : '')}
+          title="Usage estimates (Ctrl+U)"
+        >
+          <BarChart3 size={15} />
+          {!effectiveCollapsed && <span>Usage</span>}
         </button>
 
         {/* ─── Backup: prominent top-level buttons ─── */}

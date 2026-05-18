@@ -244,3 +244,8 @@ body.is-idle {
 
 /* Code block overrides for dark syntax themes */
 pre { border-radius: 0.5rem; overflow: hidden; }
+
+textarea.composer-md-input::selection {
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  color: var(--text-primary);
+}

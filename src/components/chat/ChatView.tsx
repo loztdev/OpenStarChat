@@ -57,7 +57,10 @@ export function ChatView({
     }
   }, [activeChat?.messages.length, activeChat?.messages[activeChat.messages.length - 1]?.content, isAtBottom])
 
-  function handleSend(content: string, imageUrl?: string) {
+  function handleSend(
+    content: string,
+    opts?: { imageUrls?: string[]; imageUrl?: string; fileExtracts?: { name: string; text: string }[] },
+  ) {
     if (!apiKey && !useFreeProvider) {
       onNeedApiKey()
       return
@@ -67,7 +70,7 @@ export function ChatView({
     if (!chatId) {
       chatId = createChat(defaultModelId)
     }
-    sendMessage(chatId, content, imageUrl)
+    sendMessage(chatId, content, opts)
   }
 
   function handleRegenerate() {
