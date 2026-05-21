@@ -12,6 +12,9 @@
     "@capacitor/android": "^8.3.1",
     "@capacitor/cli": "^8.3.1",
     "@capacitor/core": "^8.3.1",
+    "@tiptap/extension-placeholder": "^3.23.5",
+    "@tiptap/react": "^3.23.5",
+    "@tiptap/starter-kit": "^3.23.5",
     "clsx": "^2.1.1",
     "lucide-react": "^1.12.0",
     "pdfjs-dist": "^4.10.38",
@@ -21,6 +24,7 @@
     "react-syntax-highlighter": "^16.1.1",
     "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1",
+    "tiptap-markdown": "^0.9.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

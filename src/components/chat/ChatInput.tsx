@@ -1,4 +1,8 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import Placeholder from '@tiptap/extension-placeholder'
+import { Markdown } from 'tiptap-markdown'
 import { Send, Square, ChevronDown, Paperclip, X, Mic, MicOff, Thermometer, SlidersHorizontal, Wrench, Braces } from 'lucide-react'
 import clsx from 'clsx'
 import type { Chat, Character, Message } from '../../types'
@@ -6,7 +10,6 @@ import { useSettingsStore } from '../../store/settingsStore'
 import { useChatStore } from '../../store/chatStore'
 import { completeFree, getPollinationsProvider, getCustomProvider } from '../../api/freeProvider'
 import { completeChat } from '../../api/openrouter'
-import { MarkdownContent } from './MarkdownContent'
 import { extractPdfTextAsString } from '../../utils/extractPdfText'
 
 interface SpeechResult {
@@ -89,9 +92,9 @@ export function ChatInput({
   onOpenModelPicker,
   onOpenCharacters,
 }: ChatInputProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const underlayRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const submitRef = useRef<() => void>(() => {})
+  const ghostTextRef = useRef('')
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [ghostText, setGhostText] = useState('')
@@ -105,32 +108,6 @@ export function ChatInput({
   const predictionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const predictionAbortRef = useRef<AbortController | null>(null)
   const lastChatIdRef = useRef(chat.id)
-
-  function autosize() {
-    const ta = textareaRef.current
-    const under = underlayRef.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    const h = Math.min(ta.scrollHeight, 200)
-    ta.style.height = `${h}px`
-    if (under) under.style.height = `${h}px`
-  }
-
-  useEffect(() => {
-    if (lastChatIdRef.current !== chat.id) {
-      saveDraft(lastChatIdRef.current, draft)
-    }
-    lastChatIdRef.current = chat.id
-    const next = loadDraft(chat.id)
-    setDraft(next)
-    setAttachments([])
-    setGhostText('')
-    setTimeout(() => autosize(), 0)
-  }, [chat.id])
-
-  useEffect(() => {
-    autosize()
-  }, [draft])
 
   useEffect(() => {
     return () => {
@@ -184,48 +161,84 @@ export function ChatInput({
     [apiKey, freeProvider],
   )
 
-  const handleInput = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const val = e.target.value
-      setDraft(val)
-      saveDraft(chat.id, val)
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: 'Message… (Enter to send, Shift+Enter for newline)',
+      }),
+      Markdown.configure({ html: false, transformPastedText: true }),
+    ],
+    content: '',
+    onUpdate({ editor }) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const md = (editor.storage as any).markdown.getMarkdown() as string
+      setDraft(md)
+      saveDraft(chat.id, md)
       setGhostText('')
+      ghostTextRef.current = ''
       if (predictionTimerRef.current) clearTimeout(predictionTimerRef.current)
       if (predictionAbortRef.current) predictionAbortRef.current.abort()
-      if (predictiveText && val.length >= 5) {
-        predictionTimerRef.current = setTimeout(() => {
-          void requestPrediction(val)
-        }, 800)
+      if (predictiveText && md.length >= 5) {
+        predictionTimerRef.current = setTimeout(() => void requestPrediction(md), 800)
       }
     },
-    [chat.id, predictiveText, requestPrediction],
-  )
+    editorProps: {
+      attributes: {
+        class:
+          'composer-tiptap outline-none text-sm leading-relaxed min-h-[1.5rem] overflow-y-auto w-full',
+        style: 'color: var(--text-primary); max-height: 200px;',
+      },
+      handleKeyDown(_view, event) {
+        if (event.key === 'Tab' && ghostTextRef.current && !event.shiftKey) {
+          event.preventDefault()
+          const ghost = ghostTextRef.current
+          ghostTextRef.current = ''
+          setGhostText('')
+          if (predictionTimerRef.current) clearTimeout(predictionTimerRef.current)
+          if (predictionAbortRef.current) predictionAbortRef.current.abort()
+          _view.dispatch(
+            _view.state.tr.insertText(ghost, _view.state.selection.to),
+          )
+          return true
+        }
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault()
+          submitRef.current()
+          return true
+        }
+        return false
+      },
+    },
+  })
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Tab' && ghostText && !e.shiftKey) {
-      e.preventDefault()
-      const next = draft + ghostText
-      setDraft(next)
-      saveDraft(chat.id, next)
-      setGhostText('')
-      return
+  useEffect(() => {
+    if (!editor) return
+    if (lastChatIdRef.current !== chat.id) {
+      saveDraft(lastChatIdRef.current, draft)
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      submit()
-    }
-  }
+    lastChatIdRef.current = chat.id
+    const next = loadDraft(chat.id)
+    editor.commands.setContent(next || '')
+    setDraft(next)
+    setAttachments([])
+    setGhostText('')
+    ghostTextRef.current = ''
+  }, [chat.id, editor])
 
   function submit() {
-    const val = draft.trim()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const val = (((editor?.storage as any)?.markdown?.getMarkdown() as string | undefined) ?? '').trim()
     const images = attachments.filter((a): a is Attachment & { kind: 'image' } => a.kind === 'image')
     const files = attachments.filter((a): a is Attachment & { kind: 'file_text' } => a.kind === 'file_text')
     if ((!val && images.length === 0) || isStreaming) return
     const imageUrls = images.slice(0, MAX_IMAGES).map((i) => i.dataUrl)
     const fileExtracts = files.map((f) => ({ name: f.name, text: f.text }))
+    editor?.commands.clearContent()
     setDraft('')
     saveDraft(chat.id, '')
     setGhostText('')
+    ghostTextRef.current = ''
     setAttachments([])
     if (imageUrls.length === 1) {
       onSend(val, {
@@ -239,6 +252,8 @@ export function ChatInput({
       onSend(val, { fileExtracts: fileExtracts.length ? fileExtracts : undefined })
     }
   }
+
+  submitRef.current = submit
 
   function toggleVoice() {
     if (isListening) {
@@ -255,6 +270,7 @@ export function ChatInput({
       const transcript = Array.from(event.results)
         .map((r) => r[0].transcript)
         .join('')
+      editor?.commands.setContent(transcript)
       setDraft(transcript)
       saveDraft(chat.id, transcript)
     }
@@ -503,42 +519,23 @@ export function ChatInput({
         />
 
         <div className="flex-1 relative min-h-[1.5rem] max-h-[200px] overflow-hidden">
-          <div
-            ref={underlayRef}
-            className="absolute inset-0 overflow-y-auto pointer-events-none z-0 px-0 py-0 text-sm leading-relaxed opacity-90"
-            aria-hidden
-          >
-            <MarkdownContent text={draft || '\u00a0'} variant="composer" />
-          </div>
-          <textarea
-            ref={textareaRef}
-            rows={1}
-            value={draft}
-            onChange={handleInput}
-            onScroll={(e) => {
-              if (underlayRef.current) underlayRef.current.scrollTop = e.currentTarget.scrollTop
-            }}
-            placeholder="Message… (Enter to send, Shift+Enter for newline)"
-            onKeyDown={handleKeyDown}
-            disabled={isStreaming}
-            spellCheck
-            className="composer-md-input w-full bg-transparent outline-none resize-none text-sm leading-relaxed min-h-[1.5rem] max-h-[200px] relative z-10 overflow-y-auto text-transparent caret-auto"
-            style={{ caretColor: 'var(--text-primary)' }}
+          <EditorContent
+            editor={editor}
+            className="w-full h-full"
+            style={isStreaming ? { pointerEvents: 'none', opacity: 0.5 } : undefined}
           />
           {ghostText && (
             <div
-              className="absolute top-0 left-0 z-20 text-sm leading-relaxed pointer-events-none whitespace-pre-wrap break-words w-full"
-              style={{ color: 'var(--text-secondary)', opacity: 0.45 }}
+              className="absolute bottom-0 right-0 text-xs pointer-events-none px-1 pb-0.5 rounded"
+              style={{ color: 'var(--text-secondary)', opacity: 0.55, background: 'var(--bg-tertiary)' }}
               aria-hidden
             >
-              <span className="invisible">{draft}</span>
-              <span>{ghostText}</span>
-              <span className="text-xs ml-1" style={{ opacity: 0.65 }}>
-                ⇥ Tab
-              </span>
+              {ghostText}{' '}
+              <span style={{ opacity: 0.7 }}>⇥ Tab</span>
             </div>
           )}
         </div>
+
 
         {HAS_SPEECH && !isStreaming && (
           <button
